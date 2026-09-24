@@ -14,9 +14,8 @@
  * achar os dois; citar o caminho aqui é justamente o que o invariante proíbe.
  *
  * Não há extrator de Google Ads: não existe mecanismo nativo equivalente para
- * WhatsApp. Aquele caminho depende de uma landing page que capture o `gclid` e
- * embuta um código de rastreio na mensagem pré-preenchida, e essa LP ainda não
- * existe.
+ * WhatsApp. Aquele caminho usa a captura da landing page e o código de
+ * rastreio embutido na mensagem pré-preenchida; não é um referral CTWA.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -24,10 +23,7 @@ import { logger } from "@/lib/logger";
 
 export type PlataformaDeAnuncio = "meta_ads" | "google_ads";
 
-export interface AtribuicaoDeAnuncio {
-  plataforma: PlataformaDeAnuncio;
-  /** `ctwa_clid` — identifica o clique específico que abriu a conversa. */
-  sourceId: string | null;
+interface AtribuicaoComum {
   /**
    * O ANÚNCIO, que não é o clique.
    *
@@ -47,6 +43,20 @@ export interface AtribuicaoDeAnuncio {
   /** Payload de onde isto foi extraído — nunca descartado, é a prova. */
   bruto: Record<string, unknown>;
 }
+
+export type AtribuicaoDeAnuncio =
+  | (AtribuicaoComum & {
+      plataforma: "meta_ads";
+      /** Identidade do clique/conversa. Nunca recebe `source_id`/id do anúncio. */
+      ctwaClid: string | null;
+    })
+  | (AtribuicaoComum & {
+      plataforma: "google_ads";
+      /** Identidade do clique do Google (`gclid`). */
+      clickId: string;
+    });
+
+export type AtribuicaoMeta = Extract<AtribuicaoDeAnuncio, { plataforma: "meta_ads" }>;
 
 export type Bruto = Record<string, unknown>;
 export const obj = (v: unknown): Bruto | null =>
@@ -78,21 +88,25 @@ export async function estamparAtribuicaoDoContato(
   contactId: string,
   atribuicao: AtribuicaoDeAnuncio,
 ): Promise<void> {
-  const { error } = await admin.rpc("fn_estampar_atribuicao_de_anuncio" as never, {
-    p_org: organizationId,
-    p_contact: contactId,
-    p_platform: atribuicao.plataforma,
-    p_metadata: {
-      ad_platform: atribuicao.plataforma,
-      ad_source_id: atribuicao.sourceId,
-      ad_id: atribuicao.adId,
-      ad_title: atribuicao.titulo,
-      ad_body: atribuicao.corpo,
-      ad_source_url: atribuicao.sourceUrl,
-      ad_raw: atribuicao.bruto,
-      ad_captured_at: new Date().toISOString(),
-    },
-  } as never);
+  const clickId = atribuicao.plataforma === "meta_ads" ? atribuicao.ctwaClid : atribuicao.clickId;
+  const { error } = await admin.rpc(
+    "fn_estampar_atribuicao_de_anuncio" as never,
+    {
+      p_org: organizationId,
+      p_contact: contactId,
+      p_platform: atribuicao.plataforma,
+      p_metadata: {
+        ad_platform: atribuicao.plataforma,
+        ad_source_id: clickId,
+        ad_id: atribuicao.adId,
+        ad_title: atribuicao.titulo,
+        ad_body: atribuicao.corpo,
+        ad_source_url: atribuicao.sourceUrl,
+        ad_raw: atribuicao.bruto,
+        ad_captured_at: new Date().toISOString(),
+      },
+    } as never,
+  );
 
   if (error) {
     // `logger.error`, não `console.error`: o DoD proíbe console em código

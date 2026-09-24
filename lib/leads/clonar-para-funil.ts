@@ -22,6 +22,7 @@
  * `app/api/v1/leads/[id]/clone/route.ts`.
  */
 import type { CreateLeadInput } from "@/lib/schemas";
+import { removerProvaMetaCapiLead } from "@/lib/leads/prova-meta-capi-lead";
 
 /** O negócio de origem, como a rota o lê do banco. */
 export interface OrigemParaClonar {
@@ -83,8 +84,7 @@ export interface Recusa {
 }
 
 export type ResultadoDaEtapa =
-  | { ok: true; etapa: EtapaDoFunil }
-  | { ok: false; status: number; code: string; texto: string };
+  { ok: true; etapa: EtapaDoFunil } | { ok: false; status: number; code: string; texto: string };
 
 /**
  * As duas trocas que ESTA rota não faz.
@@ -218,7 +218,7 @@ export function montaPayloadDoClone(
     source: origem.source ?? "manual",
     custom_fields: origem.custom_fields ?? {},
     source_metadata: {
-      ...(origem.source_metadata ?? {}),
+      ...removerProvaMetaCapiLead(origem.source_metadata),
       clonado_de: {
         lead_id: origem.id,
         pipeline_id: origem.pipeline_id,
@@ -228,9 +228,11 @@ export function montaPayloadDoClone(
 }
 
 /** O registro que fica na origem: para onde o negócio foi. */
-export function registroDoDestino(
-  clone: { id?: unknown; pipeline_id?: unknown; stage_id?: unknown },
-): Record<string, unknown> {
+export function registroDoDestino(clone: {
+  id?: unknown;
+  pipeline_id?: unknown;
+  stage_id?: unknown;
+}): Record<string, unknown> {
   return {
     lead_id: clone.id ?? null,
     pipeline_id: clone.pipeline_id ?? null,

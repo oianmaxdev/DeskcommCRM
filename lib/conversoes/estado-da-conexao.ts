@@ -17,7 +17,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { PlataformaDeAnuncio } from "@/lib/plataformas-de-anuncio/types";
+import type { NomeDoEvento, PlataformaDeAnuncio } from "@/lib/plataformas-de-anuncio/types";
 
 export interface EstadoDaConexao {
   conectada: boolean;
@@ -29,6 +29,7 @@ export interface EstadoDaConexao {
 
 export interface PendenciaDeEnvio {
   leadId: string;
+  evento: NomeDoEvento;
   status: string;
   motivo: string | null;
   detalhe: string | null;
@@ -69,12 +70,16 @@ export async function lerEstadoDaConexao(
 }
 
 /**
- * As vendas de anúncio que NÃO foram reportadas, mais recentes primeiro.
+ * As conversões de anúncio que NÃO foram reportadas, mais recentes primeiro.
  *
  * Só linhas com atribuição chegam ao livro-razão (ver o cabeçalho de
  * `envio.handler.ts`), então tudo que aparece aqui é uma venda que DEVERIA ter
  * ido e não foi. Sem esse filtro na origem, a tela mostraria toda venda orgânica
  * como pendência e ninguém leria a lista duas vezes.
+ *
+ * `processing` e `retry` não entram: são estados internos que o motor ainda
+ * resolve sozinho. Exibi-los como pendência humana faria dois workers parecerem
+ * um defeito de configuração durante o lease normal de 60 segundos.
  */
 export async function lerPendencias(
   admin: SupabaseClient,
@@ -83,15 +88,18 @@ export async function lerPendencias(
 ): Promise<PendenciaDeEnvio[]> {
   const { data } = await admin
     .from("ad_conversion_dispatches")
-    .select("lead_id, status, reason, detail, value_cents, attempted_at, crm_leads(title)")
+    .select(
+      "lead_id, event_name, status, reason, detail, value_cents, attempted_at, crm_leads(title)",
+    )
     .eq("organization_id", organizationId)
-    .neq("status", "sent")
+    .in("status", ["skipped", "error"])
     .order("attempted_at", { ascending: false })
     .limit(limite);
 
   return ((data ?? []) as unknown[]).map((linha) => {
     const l = linha as {
       lead_id: string;
+      event_name: NomeDoEvento;
       status: string;
       reason: string | null;
       detail: string | null;
@@ -102,6 +110,7 @@ export async function lerPendencias(
     const lead = Array.isArray(l.crm_leads) ? l.crm_leads[0] : l.crm_leads;
     return {
       leadId: l.lead_id,
+      evento: l.event_name,
       status: l.status,
       motivo: l.reason,
       detalhe: l.detail,
@@ -112,7 +121,7 @@ export async function lerPendencias(
   });
 }
 
-/** Quantas vendas foram reportadas com sucesso — o contraponto da lista acima. */
+/** Quantas conversões foram reportadas com sucesso — o contraponto da lista acima. */
 export async function contaEnviadas(
   admin: SupabaseClient,
   organizationId: string,
@@ -136,14 +145,12 @@ export const MOTIVO_LEGIVEL: Record<string, string> = {
     "A venda fechou sem valor preenchido. A plataforma exige valor e moeda em uma compra — preencha o valor do negócio e ele será reportado na próxima passagem.",
   sem_conexao:
     "Nenhuma conta de anúncios conectada nesta organização. Preencha o formulário acima.",
-  conexao_desabilitada:
-    "A conexão existe mas está desligada. Ligue o envio no formulário acima.",
+  conexao_desabilitada: "A conexão existe mas está desligada. Ligue o envio no formulário acima.",
   credencial_incompleta:
     "Falta o identificador do destino ou o token. Complete o formulário acima.",
   cifra_indisponivel:
     "Esta instalação está sem a chave mestra de criptografia — quem instalou o sistema precisa configurá-la. Reconectar pela tela não resolve.",
   plataforma_sem_transporte:
     "O lead veio de uma plataforma para a qual ainda não sabemos reportar conversão.",
-  recusado_pela_plataforma:
-    "A plataforma recusou o envio. O detalhe ao lado é a resposta dela.",
+  recusado_pela_plataforma: "A plataforma recusou o envio. O detalhe ao lado é a resposta dela.",
 };

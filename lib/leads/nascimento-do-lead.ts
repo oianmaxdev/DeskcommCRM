@@ -54,7 +54,12 @@ import { marcaDaOrigem, origemDeCampanhaDaConversa } from "@/lib/campanhas/orige
 import { logger } from "@/lib/logger";
 
 import { lerClientePelaAgenda } from "@/lib/contacts/cliente-pela-agenda";
-import { ehIdentificadorTecnico, rotuloDoContato, SEM_NOME } from "@/lib/contacts/rotulo-do-contato";
+import {
+  ehIdentificadorTecnico,
+  rotuloDoContato,
+  SEM_NOME,
+} from "@/lib/contacts/rotulo-do-contato";
+import type { AtribuicaoDeAnuncio } from "./atribuicao-de-anuncio";
 
 import { emitLeadActivity } from "./activity-emitter";
 
@@ -118,6 +123,10 @@ export interface DadosDoNascimento {
   contactId: string;
   /** conversa que originou — vai ao vínculo e ao registro. */
   conversationId: string;
+  /** Linha da mensagem inbound que trouxe a atribuição desta entrada. */
+  messageId?: string | null;
+  /** Referral da mesma entrada; first-touch do contato não substitui esta prova. */
+  atribuicaoDeAnuncioAtual?: AtribuicaoDeAnuncio | null;
   /** nome do contato, para o título do card. */
   nomeDoContato: string | null;
   /** Rotulo/source/motivo do canal de origem -- default preserva o WhatsApp. */
@@ -392,6 +401,12 @@ export async function garantirLeadDaConversa(
     // rótulo em `crm_pipelines.settings.canonical_tags` (Configurações do
     // funil) — a tag sempre entra; o destaque visual é opt-in do operador.
     p_tags: rotuloDeAnuncio ? [rotuloDeAnuncio] : [],
+    p_message: dados.messageId ?? null,
+    p_conversation: conversationId,
+    p_meta_ctwa_clid:
+      dados.atribuicaoDeAnuncioAtual?.plataforma === "meta_ads"
+        ? dados.atribuicaoDeAnuncioAtual.ctwaClid
+        : null,
   });
 
   if (error) {

@@ -11,6 +11,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  */
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
+import { ocultarProvaMetaCapiLead } from "@/lib/leads/prova-meta-capi-lead";
 import { audit } from "@/lib/audit";
 import { ApiError } from "@/lib/api/types";
 import { ok, fail } from "@/lib/api/wrappers";
@@ -237,5 +238,5 @@ export async function POST(
     },
   });
 
-  return ok(finalLead, { requestId });
+  return ok(ocultarProvaMetaCapiLead(finalLead as Record<string, unknown>), { requestId });
 }

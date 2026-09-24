@@ -78,6 +78,7 @@ describe("parser do webhook oficial — o referral atravessa", () => {
 const estado = vi.hoisted(() => ({
   ordem: [] as string[],
   rpcs: [] as Array<{ name: string; args: Record<string, unknown> }>,
+  posEntrada: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("@/lib/channels/contato-por-telefone", () => ({
@@ -85,8 +86,9 @@ vi.mock("@/lib/channels/contato-por-telefone", () => ({
 }));
 
 vi.mock("@/lib/channels/pos-entrada", () => ({
-  aplicarEfeitosPosEntrada: async () => {
+  aplicarEfeitosPosEntrada: async (_admin: unknown, entrada: Record<string, unknown>) => {
     estado.ordem.push("pos_entrada");
+    estado.posEntrada.push(entrada);
   },
 }));
 
@@ -145,6 +147,7 @@ const estampas = () => estado.rpcs.filter((r) => r.name === "fn_estampar_atribui
 beforeEach(() => {
   estado.ordem = [];
   estado.rpcs = [];
+  estado.posEntrada = [];
 });
 
 describe("ingestão oficial — atribuição de anúncio no contato", () => {
@@ -178,6 +181,14 @@ describe("ingestão oficial — atribuição de anúncio no contato", () => {
     const estampa = estado.ordem.indexOf("fn_estampar_atribuicao_de_anuncio");
     expect(estampa).toBeGreaterThan(estado.ordem.indexOf("fn_upsert_wa_contact"));
     expect(estampa).toBeLessThan(estado.ordem.indexOf("pos_entrada"));
+    expect(estado.posEntrada[0]).toMatchObject({
+      messageId: "message-1",
+      atribuicaoDeAnuncioAtual: {
+        plataforma: "meta_ads",
+        ctwaClid: "ARAkLkA8rmlFeiCktEJQ",
+        adId: "120210000000000",
+      },
+    });
   });
 
   it("mensagem sem referral não estampa nada", async () => {
@@ -186,11 +197,9 @@ describe("ingestão oficial — atribuição de anúncio no contato", () => {
   });
 
   it("post orgânico compartilhado não é anúncio", async () => {
-    await ingestMetaInbound(
-      adminFalso(),
-      evento({ ...REFERRAL_DE_ANUNCIO, source_type: "post" }),
-      { organizationId: "org-1" },
-    );
+    await ingestMetaInbound(adminFalso(), evento({ ...REFERRAL_DE_ANUNCIO, source_type: "post" }), {
+      organizationId: "org-1",
+    });
     expect(estampas()).toHaveLength(0);
   });
 });

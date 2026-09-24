@@ -46,7 +46,13 @@ import { transporteDe } from "@/lib/plataformas-de-anuncio/registry";
 import type { ConversaoOffline, NomeDoEvento } from "@/lib/plataformas-de-anuncio/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerAtribuicao } from "./leitura-da-atribuicao";
-import { jaFoiEnviada, registraEnvio } from "./registro-de-envio";
+import {
+  claimEnvio,
+  concluirClaim,
+  jaFoiEnviada,
+  liberarClaim,
+  registraEnvio,
+} from "./registro-de-envio";
 
 const CONSUMER_KEY = "conversoes.venda";
 const EVENTO: NomeDoEvento = "Purchase";
@@ -150,6 +156,23 @@ async function handle(row: EventRow): Promise<HandlerResult> {
     return ok("skipped", credencial.motivo);
   }
 
+  const claim = await claimEnvio(admin, {
+    organizationId: row.organization_id,
+    leadId: lead.id,
+    plataforma,
+    evento: EVENTO,
+    eventoId: `${lead.id}:${EVENTO}`,
+  });
+  if (!claim.adquirido || !claim.token) {
+    if (claim.statusAtual === "sent") return ok("skipped", "ja_enviada");
+    return {
+      consumer_key: CONSUMER_KEY,
+      status: "retry",
+      retry_at: new Date(Date.now() + ESPERA_PADRAO_MS).toISOString(),
+      detail: claim.statusAtual === "processing" ? "envio_em_andamento" : "claim_indisponivel",
+    };
+  }
+
   const conversao: ConversaoOffline = {
     organizationId: row.organization_id,
     leadId: lead.id,
@@ -171,14 +194,42 @@ async function handle(row: EventRow): Promise<HandlerResult> {
   const resultado = await transporte.enviar(credencial.credencial, conversao);
 
   if (resultado.tipo === "ok") {
-    await registra("sent", null, resultado.detalhe);
+    const concluido = await concluirClaim(
+      admin,
+      {
+        organizationId: row.organization_id,
+        leadId: lead.id,
+        plataforma,
+        evento: EVENTO,
+        status: "sent",
+        motivo: null,
+        eventoId: `${lead.id}:${EVENTO}`,
+        valorCentavos: lead.value_cents,
+        moeda: lead.currency,
+        detalhe: resultado.detalhe ?? null,
+      },
+      claim.token,
+    );
+    if (!concluido) {
+      return {
+        consumer_key: CONSUMER_KEY,
+        status: "retry",
+        retry_at: new Date(Date.now() + ESPERA_PADRAO_MS).toISOString(),
+        detail: "settlement_falhou",
+      };
+    }
     return ok("ok", `conversão reportada (${plataforma})`);
   }
 
   if (resultado.tipo === "transitorio") {
-    // Nada no livro-razão: a tela mostra o que precisa de HUMANO, e isto ainda
-    // pode se resolver sozinho. Registrar aqui produziria alarme para uma
-    // instabilidade que some no próximo drain.
+    // O claim volta a `retry`, sem alarme de erro permanente: a instabilidade
+    // pode se resolver no próximo drain e o lease deixa de bloquear a retomada.
+    await liberarClaim(
+      admin,
+      { organizationId: row.organization_id, leadId: lead.id, evento: EVENTO },
+      claim.token,
+      resultado.detalhe,
+    );
     return {
       consumer_key: CONSUMER_KEY,
       status: "retry",
@@ -187,8 +238,30 @@ async function handle(row: EventRow): Promise<HandlerResult> {
     };
   }
 
-  await registra("error", "recusado_pela_plataforma", resultado.detalhe);
-  return ok("error", resultado.detalhe);
+  const concluido = await concluirClaim(
+    admin,
+    {
+      organizationId: row.organization_id,
+      leadId: lead.id,
+      plataforma,
+      evento: EVENTO,
+      status: "error",
+      motivo: "recusado_pela_plataforma",
+      eventoId: `${lead.id}:${EVENTO}`,
+      valorCentavos: lead.value_cents,
+      moeda: lead.currency,
+      detalhe: resultado.detalhe,
+    },
+    claim.token,
+  );
+  return concluido
+    ? ok("error", resultado.detalhe)
+    : {
+        consumer_key: CONSUMER_KEY,
+        status: "retry",
+        retry_at: new Date(Date.now() + ESPERA_PADRAO_MS).toISOString(),
+        detail: "settlement_falhou",
+      };
 }
 
 export const conversaoDeVendaHandler: EventHandler = {

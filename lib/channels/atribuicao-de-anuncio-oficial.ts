@@ -5,7 +5,7 @@
  * feature perguntando identidade (doutrina de restrição de canal, invariante 1).
  * O formato agnóstico e a gravação estão em `lib/leads/atribuicao-de-anuncio.ts`.
  */
-import type { AtribuicaoDeAnuncio, Bruto } from "@/lib/leads/atribuicao-de-anuncio";
+import type { AtribuicaoMeta, Bruto } from "@/lib/leads/atribuicao-de-anuncio";
 import { obj, str } from "@/lib/leads/atribuicao-de-anuncio";
 
 /**
@@ -20,14 +20,13 @@ import { obj, str } from "@/lib/leads/atribuicao-de-anuncio";
  * reconhece em vez de lançar. `"post"` é orgânico compartilhado, não anúncio
  * pago — só `"ad"` (ou ausência do campo) conta como atribuição.
  */
-export function extrairAtribuicaoMeta(referral: unknown): AtribuicaoDeAnuncio | null {
+export function extrairAtribuicaoMeta(referral: unknown): AtribuicaoMeta | null {
   const r = obj(referral);
   if (!r) return null;
   const tipo = str(r.source_type) ?? str(r.sourceType);
   if (tipo && tipo !== "ad") return null;
 
-  const sourceId =
-    str(r.ctwa_clid) ?? str(r.ctwaClid) ?? str(r.source_id) ?? str(r.sourceId);
+  const ctwaClid = str(r.ctwa_clid) ?? str(r.ctwaClid);
   // O id do anúncio, SEMPRE, e não só quando o clique falta. Enquanto ele era
   // apenas o degrau de baixo do `??` acima, o payload que trazia os dois — o
   // caso comum — perdia este aqui, e a pergunta "de qual anúncio veio?" ficava
@@ -38,11 +37,11 @@ export function extrairAtribuicaoMeta(referral: unknown): AtribuicaoDeAnuncio | 
   // Sem NENHUM campo que identifique o anúncio, não há o que atribuir — um
   // `referral` vazio (ou só com `body`) não distingue "veio de anúncio" de
   // "o provider mandou um objeto vazio por engano".
-  if (!sourceId && !titulo && !sourceUrl) return null;
+  if (!ctwaClid && !adId && !titulo && !sourceUrl) return null;
 
   return {
     plataforma: "meta_ads",
-    sourceId,
+    ctwaClid,
     adId,
     titulo,
     corpo: str(r.body),

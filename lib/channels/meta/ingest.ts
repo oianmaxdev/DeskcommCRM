@@ -290,6 +290,7 @@ export async function ingestMetaInbound(
     contactId: contactId as string,
     conversationId: conversationId as string,
     messageId: messageId || null,
+    atribuicaoDeAnuncioAtual: atribuicao,
     channelSessionId: sessao.id,
     texto: e.text ?? null,
     nomeDoContato: e.profileName ?? null,

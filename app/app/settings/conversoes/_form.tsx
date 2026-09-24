@@ -110,7 +110,9 @@ export function FormularioDeConversoes({
             placeholder="123456789012345"
           />
           <p className="text-xs text-muted-foreground">
-            {t("Só números. Você encontra no gerenciador de anúncios, na fonte de dados que recebe as conversões.")}
+            {t(
+              "Só números. Você encontra no gerenciador de anúncios, na fonte de dados que recebe as conversões.",
+            )}
           </p>
         </div>
 
@@ -142,13 +144,15 @@ export function FormularioDeConversoes({
             placeholder="TEST12345"
           />
           <p className="text-xs text-muted-foreground">
-            {t("Enquanto preenchido, as vendas vão marcadas como teste e não contam para a otimização. Apague quando terminar de conferir.")}
+            {t(
+              "Enquanto preenchido, leads e vendas vão marcados como teste e não contam para a otimização. Apague quando terminar de conferir.",
+            )}
           </p>
         </div>
 
         <div className="flex items-center justify-between rounded-md border p-4">
           <div className="flex flex-col gap-1">
-            <Label htmlFor="enabled">{t("Reportar vendas automaticamente")}</Label>
+            <Label htmlFor="enabled">{t("Reportar leads e vendas automaticamente")}</Label>
             <p className="text-xs text-muted-foreground">
               {t("Desligar pausa o envio e mantém a credencial gravada.")}
             </p>

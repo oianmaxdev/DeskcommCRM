@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Meta CAPI Lead",
+    "subtitle": "Prova causal no nascimento, evento canônico e envio idempotente (migration 0385; base v1.42.0)",
+    "output": "meta-capi-lead.html",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    { "id": "entrada", "label": "Entrada atual" },
+    { "id": "crm", "label": "CRM" },
+    { "id": "eventos", "label": "Event log" },
+    { "id": "externo", "label": "Plataformas" }
+  ],
+  "mainPath": [
+    "referral",
+    "ingest",
+    "nascimento",
+    "lead",
+    "evento",
+    "handlerLead",
+    "ledger",
+    "meta"
+  ],
+  "nodes": [
+    {
+      "id": "referral",
+      "lane": "entrada",
+      "col": 1,
+      "type": "external",
+      "label": "Referral atual",
+      "sublabel": "ctwa_clid separado de ad_id"
+    },
+    {
+      "id": "ingest",
+      "lane": "entrada",
+      "col": 2,
+      "type": "service",
+      "label": "EntradaDeMensagem / abrirDemanda",
+      "sublabel": "leva apenas a atribuição desta mensagem"
+    },
+    {
+      "id": "nascimento",
+      "lane": "crm",
+      "col": 3,
+      "type": "database",
+      "label": "fn_nascer_lead_da_conversa",
+      "sublabel": "advisory lock + prova da mensagem"
+    },
+    {
+      "id": "lead",
+      "lane": "crm",
+      "col": 4,
+      "type": "database",
+      "label": "crm_leads",
+      "sublabel": "meta_capi_lead_birth_v1 reservado"
+    },
+    {
+      "id": "evento",
+      "lane": "eventos",
+      "col": 4,
+      "type": "messagebus",
+      "label": "lead.created",
+      "sublabel": "entity_kind = crm_lead, mesma transação"
+    },
+    {
+      "id": "automacoes",
+      "lane": "eventos",
+      "col": 5,
+      "type": "service",
+      "label": "automation-rules",
+      "sublabel": "consumidor existente preservado"
+    },
+    {
+      "id": "handlerLead",
+      "lane": "eventos",
+      "col": 5,
+      "type": "service",
+      "label": "conversoes.lead",
+      "sublabel": "created_at real + event_id lead:Lead"
+    },
+    {
+      "id": "handlerPurchase",
+      "lane": "eventos",
+      "col": 5,
+      "type": "service",
+      "label": "conversoes.venda",
+      "sublabel": "Purchase preservado com valor e moeda"
+    },
+    {
+      "id": "ledger",
+      "lane": "crm",
+      "col": 6,
+      "type": "database",
+      "label": "ad_conversion_dispatches",
+      "sublabel": "claim/lease por organização, lead e evento"
+    },
+    {
+      "id": "meta",
+      "lane": "externo",
+      "col": 7,
+      "type": "external",
+      "label": "Meta Conversions API",
+      "sublabel": "Lead e Purchase; event_id determinístico"
+    },
+    {
+      "id": "google",
+      "lane": "externo",
+      "col": 7,
+      "type": "external",
+      "label": "Google Ads",
+      "sublabel": "Purchase somente"
+    },
+    {
+      "id": "tela",
+      "lane": "crm",
+      "col": 7,
+      "type": "frontend",
+      "label": "Configurações → Conversões",
+      "sublabel": "sucesso e pendências Lead/Purchase"
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": "referral", "to": "ingest", "label": "atribuição da entrada" },
+    {
+      "id": "e2",
+      "from": "ingest",
+      "to": "nascimento",
+      "label": "mensagem + conversa + ctwa_clid"
+    },
+    { "id": "e3", "from": "nascimento", "to": "lead", "label": "INSERT + snapshot causal" },
+    { "id": "e4", "from": "nascimento", "to": "evento", "label": "emite atomicamente" },
+    { "id": "e5", "from": "evento", "to": "automacoes", "label": "continua consumindo" },
+    { "id": "e6", "from": "evento", "to": "handlerLead", "label": "novo consumidor independente" },
+    { "id": "e7", "from": "lead", "to": "handlerLead", "label": "releitura por organization_id" },
+    { "id": "e8", "from": "handlerLead", "to": "ledger", "label": "claim antes de HTTP" },
+    { "id": "e9", "from": "ledger", "to": "handlerLead", "label": "token + lease" },
+    {
+      "id": "e10",
+      "from": "handlerLead",
+      "to": "meta",
+      "label": "Lead sem custom_data financeiro"
+    },
+    {
+      "id": "e11",
+      "from": "handlerPurchase",
+      "to": "ledger",
+      "label": "mesmo claim, outro event_name"
+    },
+    {
+      "id": "e12",
+      "from": "handlerPurchase",
+      "to": "meta",
+      "label": "Purchase com value/currency"
+    },
+    { "id": "e13", "from": "handlerPurchase", "to": "google", "label": "Purchase somente" },
+    { "id": "e14", "from": "ledger", "to": "tela", "label": "resultado observável" },
+    { "id": "e15", "from": "meta", "to": "ledger", "label": "settlement exige token" }
+  ],
+  "notes": [
+    "Não existe fallback de first-touch: contacts.source_metadata, ad_source_id, source_id, ad_id e ad_raw não provam um novo Lead.",
+    "Criação manual, importação e clone removem a chave reservada; apenas a RPC do nascimento automático pode construí-la.",
+    "Nenhum trigger faz HTTP. O banco só grava o fato e o event_log; o transporte roda no consumidor assíncrono."
+  ]
+}

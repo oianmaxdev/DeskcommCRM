@@ -11,6 +11,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * humano fecharem negócio por critérios diferentes.
  */
 import { randomUUID } from "node:crypto";
+import { ocultarProvaMetaCapiLead } from "@/lib/leads/prova-meta-capi-lead";
 import { type NextRequest } from "next/server";
 
 import { ApiError } from "@/lib/api/types";
@@ -51,7 +52,7 @@ export async function POST(
       },
       { leadId, desfecho: "lost", motivo: input.lost_reason },
     );
-    return ok(lead, { requestId });
+    return ok(ocultarProvaMetaCapiLead(lead as Record<string, unknown>), { requestId });
   } catch (err) {
     if (err instanceof ApiError) {
       const fieldErrors = (err.details as { fieldErrors?: Record<string, unknown> } | undefined)?.fieldErrors;

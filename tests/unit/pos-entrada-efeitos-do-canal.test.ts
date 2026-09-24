@@ -359,6 +359,26 @@ describe("nascimento do lead", () => {
     );
   });
 
+  it("leva messageId e a atribuição da entrada atual, sem reler first-touch", async () => {
+    const atribuicao = {
+      plataforma: "meta_ads" as const,
+      ctwaClid: "CTWA_ATUAL",
+      adId: "AD_ID_SEPARADO",
+      titulo: null,
+      corpo: null,
+      sourceUrl: null,
+      bruto: {},
+    };
+    await rodar({ messageId: "msg-atual", atribuicaoDeAnuncioAtual: atribuicao });
+    expect(garantirLeadDaConversa).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        messageId: "msg-atual",
+        atribuicaoDeAnuncioAtual: atribuicao,
+      }),
+    );
+  });
+
   it("exceção no nascimento não impede o despacho", async () => {
     garantirLeadDaConversa.mockRejectedValue(new Error("funil não configurado") as never);
     await rodar();
@@ -440,7 +460,6 @@ describe("os dois canais usam o mesmo passo", () => {
     );
   });
 });
-
 
 /**
  * ─── A ORIGEM DA PÁGINA, NA CHEGADA PELO WHATSAPP (#924) ───────────────────
@@ -603,6 +622,10 @@ describe("o ref curto da página que veio no texto", () => {
     const metadata = estampa?.args.p_metadata as Record<string, unknown>;
     expect(metadata.utm_campaign).toBe("black-friday");
     expect(metadata.utm_ad).toBe("video-depoimento-v3");
+    expect(garantirLeadDaConversa).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ atribuicaoDeAnuncioAtual: null }),
+    );
   });
 
   it("o consumo filtra por organização e por ref ainda não usado", async () => {

@@ -743,6 +743,7 @@ async function handleInbound(
     contactId,
     conversationId,
     messageId: insertedMessage?.id ?? null,
+    atribuicaoDeAnuncioAtual: atribuicao,
     channelSessionId: session.id,
     texto,
     nomeDoContato: notifyNameOf(p),

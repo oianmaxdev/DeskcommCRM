@@ -21,6 +21,7 @@ import { mediaPersistHandler } from "@/workers/media-persist-worker.handler";
 import { mediaDeriveHandler } from "@/workers/media-derive-worker.handler";
 import { webPushInboundHandler } from "@/lib/notifications/push.handler";
 import { conversaoDeVendaHandler } from "@/lib/conversoes/envio.handler";
+import { conversaoDeLeadHandler } from "@/lib/conversoes/lead.handler";
 import { avisoDeCasoAoSuporteHandler } from "@/lib/escalacao/aviso-ao-suporte.handler";
 import { registerHandler } from "@/lib/event-log/dispatcher";
 
@@ -54,6 +55,9 @@ export function ensureHandlersRegistered(): void {
   // e cuja falha custa um follow-up perdido. Ele também é o único handler que
   // adia a si mesmo quando o dreno está rodando dentro de uma requisição.
   registerHandler(avisoDeCasoAoSuporteHandler);
+  // O MESMO fato também alimenta automações. O dispatcher mantém uma marca por
+  // consumer_key; registrar este consumidor não substitui nem bloqueia o atual.
+  registerHandler(conversaoDeLeadHandler);
   // Por último: reportar a venda ao anúncio é o consumidor mais externo do
   // fechamento — depende de rede de terceiro e não pode atrasar quem escreve
   // no banco. Falha dele nunca segura os handlers acima.

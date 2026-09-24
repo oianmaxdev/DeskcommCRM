@@ -54,6 +54,7 @@ import { ehContatoDoNumeroInterno } from "@/lib/escalacao/numero-interno-de-avis
 import { acelerarPipelineDeEventos } from "@/lib/dev/kick-local-pipeline";
 import { autorizarContatoParaIA } from "@/lib/ai/elegibilidade/autorizacao";
 import { casarCampanha, lerCampanhas } from "@/lib/ai/elegibilidade/campanha";
+import type { AtribuicaoDeAnuncio } from "@/lib/leads/atribuicao-de-anuncio";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -97,6 +98,8 @@ export interface EntradaDeMensagem {
    * turno, e inventar um id faria o worker buscar uma linha inexistente.
    */
   messageId: string | null;
+  /** Atribuição extraída desta mensagem, nunca o first-touch relido do contato. */
+  atribuicaoDeAnuncioAtual?: AtribuicaoDeAnuncio | null;
   channelSessionId: string;
   /** O texto que o cliente escreveu — é onde se procura o pedido de saída. */
   texto: string | null;
@@ -281,6 +284,8 @@ async function abrirDemanda(admin: Admin, entrada: EntradaDeMensagem): Promise<v
       organizationId: entrada.organizationId,
       contactId: entrada.contactId,
       conversationId: entrada.conversationId,
+      messageId: entrada.messageId,
+      atribuicaoDeAnuncioAtual: entrada.atribuicaoDeAnuncioAtual ?? null,
       nomeDoContato: entrada.nomeDoContato,
     });
 

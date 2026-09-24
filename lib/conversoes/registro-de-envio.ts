@@ -26,6 +26,12 @@ import type { NomeDoEvento, PlataformaDeAnuncio } from "@/lib/plataformas-de-anu
 
 export type StatusDeEnvio = "sent" | "skipped" | "error";
 
+export interface ClaimDeEnvio {
+  adquirido: boolean;
+  token: string | null;
+  statusAtual: string;
+}
+
 export interface RegistroDeEnvio {
   organizationId: string;
   leadId: string;
@@ -58,6 +64,101 @@ export async function jaFoiEnviada(
   return (data as { status?: string } | null)?.status === "sent";
 }
 
+/** Claim atômico imediatamente antes da chamada HTTP. */
+export async function claimEnvio(
+  admin: SupabaseClient,
+  registro: Pick<
+    RegistroDeEnvio,
+    "organizationId" | "leadId" | "plataforma" | "evento" | "eventoId"
+  >,
+  leaseSeconds = 60,
+): Promise<ClaimDeEnvio> {
+  const { data, error } = await admin.rpc(
+    "fn_claim_ad_conversion_dispatch" as never,
+    {
+      p_org: registro.organizationId,
+      p_lead: registro.leadId,
+      p_platform: registro.plataforma,
+      p_event_name: registro.evento,
+      p_event_id: registro.eventoId,
+      p_lease_seconds: leaseSeconds,
+    } as never,
+  );
+  if (error) {
+    logger.error("[conversoes.registro] falha ao adquirir claim", {
+      organizationId: registro.organizationId,
+      leadId: registro.leadId,
+      evento: registro.evento,
+      error: error.message,
+    });
+    return { adquirido: false, token: null, statusAtual: "claim_error" };
+  }
+
+  const bruto = Array.isArray(data) ? data[0] : data;
+  const linha = (bruto ?? {}) as {
+    acquired?: boolean;
+    token?: string | null;
+    current_status?: string;
+  };
+  return {
+    adquirido: linha.acquired === true && typeof linha.token === "string",
+    token: typeof linha.token === "string" ? linha.token : null,
+    statusAtual: linha.current_status ?? "indisponivel",
+  };
+}
+
+/** Settlement só vence com o token que adquiriu o claim. */
+export async function concluirClaim(
+  admin: SupabaseClient,
+  registro: RegistroDeEnvio,
+  claimToken: string,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc(
+    "fn_settle_ad_conversion_dispatch" as never,
+    {
+      p_org: registro.organizationId,
+      p_lead: registro.leadId,
+      p_event_name: registro.evento,
+      p_claim_token: claimToken,
+      p_status: registro.status,
+      p_reason: registro.motivo,
+      p_detail: registro.detalhe ?? null,
+      p_value_cents: registro.valorCentavos ?? null,
+      p_currency: registro.moeda ?? null,
+    } as never,
+  );
+  if (error || data !== true) {
+    logger.error("[conversoes.registro] settlement recusado", {
+      organizationId: registro.organizationId,
+      leadId: registro.leadId,
+      evento: registro.evento,
+      error: error?.message ?? "claim_token_incorreto",
+    });
+    return false;
+  }
+  return true;
+}
+
+/** Libera o lease de uma falha transitória para o drain retomar. */
+export async function liberarClaim(
+  admin: SupabaseClient,
+  registro: Pick<RegistroDeEnvio, "organizationId" | "leadId" | "evento">,
+  claimToken: string,
+  detalhe: string,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc(
+    "fn_release_ad_conversion_dispatch" as never,
+    {
+      p_org: registro.organizationId,
+      p_lead: registro.leadId,
+      p_event_name: registro.evento,
+      p_claim_token: claimToken,
+      p_detail: detalhe,
+    } as never,
+  );
+  return !error && data === true;
+}
+
 /**
  * Grava o desfecho. Falha aqui NÃO derruba o envio que já aconteceu — mas é
  * contada, porque um livro-razão que perde linha em silêncio deixa de servir
@@ -67,21 +168,29 @@ export async function registraEnvio(
   admin: SupabaseClient,
   registro: RegistroDeEnvio,
 ): Promise<void> {
-  const { error } = await admin.from("ad_conversion_dispatches").upsert(
+  if (registro.status === "sent") {
+    logger.error("[conversoes.registro] sent exige claim", {
+      organizationId: registro.organizationId,
+      leadId: registro.leadId,
+      evento: registro.evento,
+    });
+    return;
+  }
+
+  const { error } = await admin.rpc(
+    "fn_record_ad_conversion_outcome" as never,
     {
-      organization_id: registro.organizationId,
-      lead_id: registro.leadId,
-      platform: registro.plataforma,
-      event_name: registro.evento,
-      status: registro.status,
-      reason: registro.motivo,
-      event_id: registro.eventoId,
-      value_cents: registro.valorCentavos ?? null,
-      currency: registro.moeda ?? null,
-      detail: registro.detalhe ?? null,
-      attempted_at: new Date().toISOString(),
-    },
-    { onConflict: "organization_id,lead_id,event_name" },
+      p_org: registro.organizationId,
+      p_lead: registro.leadId,
+      p_platform: registro.plataforma,
+      p_event_name: registro.evento,
+      p_event_id: registro.eventoId,
+      p_status: registro.status,
+      p_reason: registro.motivo,
+      p_detail: registro.detalhe ?? null,
+      p_value_cents: registro.valorCentavos ?? null,
+      p_currency: registro.moeda ?? null,
+    } as never,
   );
 
   if (error) {

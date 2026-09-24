@@ -97,23 +97,25 @@ async function enviar(
   // string crua onde ele espera lista é aceito com aviso e ignorado no match.
   if (conversao.telefone) userData.ph = [hash(conversao.telefone)];
 
+  const evento: Record<string, unknown> = {
+    event_name: conversao.evento,
+    // Segundos, não milissegundos. Em ms o evento cai a ~55 mil anos no
+    // futuro, e a resposta é 200 — some sem erro.
+    event_time: Math.floor(conversao.ocorridoEm.getTime() / 1000),
+    event_id: conversao.eventoId,
+    action_source: "business_messaging",
+    messaging_channel: "whatsapp",
+    user_data: userData,
+  };
+  if (conversao.evento === "Purchase") {
+    evento.custom_data = {
+      value: conversao.valorCentavos / 100,
+      currency: conversao.moeda.toUpperCase(),
+    };
+  }
+
   const corpo: Record<string, unknown> = {
-    data: [
-      {
-        event_name: conversao.evento,
-        // Segundos, não milissegundos. Em ms o evento cai a ~55 mil anos no
-        // futuro, e a resposta é 200 — some sem erro.
-        event_time: Math.floor(conversao.ocorridoEm.getTime() / 1000),
-        event_id: conversao.eventoId,
-        action_source: "business_messaging",
-        messaging_channel: "whatsapp",
-        user_data: userData,
-        custom_data: {
-          value: conversao.valorCentavos / 100,
-          currency: conversao.moeda.toUpperCase(),
-        },
-      },
-    ],
+    data: [evento],
   };
   if (credencial.testEventCode) corpo.test_event_code = credencial.testEventCode;
 

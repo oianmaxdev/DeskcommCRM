@@ -330,6 +330,7 @@ async function efeitosDaEntrada(
     contactId,
     conversationId,
     messageId,
+    atribuicaoDeAnuncioAtual: atribuicao,
     channelSessionId: input.channelSessionId,
     texto: msg.text,
     nomeDoContato: msg.identity.displayName,

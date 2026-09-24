@@ -20,6 +20,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  */
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
+import { ocultarProvaMetaCapiLead } from "@/lib/leads/prova-meta-capi-lead";
 
 import { createLeadHandler } from "@/app/api/v1/leads/_handler";
 import type { HandlerCtx } from "@/lib/api/handlers/types";
@@ -300,8 +301,10 @@ export async function POST(
     // fazem quem integra tratar cada uma de um jeito sem que nada justifique.
     return ok(
       {
-        lead: clone,
-        origem: origemFinal ?? origemEncerrada,
+        lead: ocultarProvaMetaCapiLead(clone as Record<string, unknown>),
+        origem: ocultarProvaMetaCapiLead(
+          (origemFinal ?? origemEncerrada) as Record<string, unknown>,
+        ),
       },
       { requestId, status: 201 },
     );

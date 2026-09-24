@@ -44,8 +44,7 @@
  */
 export type PlataformaDeAnuncio = "meta_ads" | "google_ads";
 
-/** Só `Purchase` hoje. `Lead` é a Fase 2 e entra quando `lead.created` for consumido. */
-export type NomeDoEvento = "Purchase";
+export type NomeDoEvento = "Lead" | "Purchase";
 
 /**
  * Uma conversão pronta para sair — no formato da CASA, não no da plataforma.
@@ -53,7 +52,7 @@ export type NomeDoEvento = "Purchase";
  * Quem monta isto (`lib/conversoes/`) não sabe que campo vira o quê no fio. Quem
  * traduz (o transporte) não sabe de onde veio nem por que foi decidido enviar.
  */
-export interface ConversaoOffline {
+interface ConversaoComum {
   organizationId: string;
   leadId: string;
   evento: NomeDoEvento;
@@ -62,23 +61,33 @@ export interface ConversaoOffline {
    *
    * A plataforma descarta a segunda cópia com o mesmo par (id, evento). É a
    * SEGUNDA camada — a primeira é o índice único do livro-razão. Duas porque
-   * contar a mesma venda duas vezes envenena o otimizador e não tem sintoma:
-   * o algoritmo passa a perseguir um público que comprou metade do que parece.
+   * contar a mesma conversão duas vezes envenena o otimizador e não tem sintoma:
+   * o algoritmo passa a perseguir um público que converteu metade do que parece.
    */
   eventoId: string;
   /**
-   * QUANDO a venda aconteceu (o `closed_at` do lead), nunca quando o worker
-   * acordou. A plataforma recusa evento velho demais, e carimbar `now()` faria
-   * um backlog de drain virar atribuição errada em vez de erro visível.
+   * QUANDO o fato aconteceu: `created_at` no Lead, `closed_at` no Purchase.
+   * Nunca quando o worker acordou. A plataforma recusa evento velho demais, e
+   * carimbar `now()` faria backlog virar atribuição errada em vez de erro.
    */
   ocorridoEm: Date;
-  /** O clique que originou a conversa — `ad_source_id` do contato (0164). */
+  /** Identidade real do clique: ctwa_clid na Meta, gclid no Google. */
   cliqueDeOrigem: string;
   /** E.164 sem `+`, ainda EM CLARO: o hash é responsabilidade do transporte. */
   telefone: string | null;
-  valorCentavos: number;
-  moeda: string;
 }
+
+/**
+ * `Purchase` carrega dinheiro porque esse é parte obrigatória da sua semântica.
+ * `Lead` não finge uma compra de valor zero para caber no mesmo formato.
+ */
+export type ConversaoOffline =
+  | (ConversaoComum & { evento: "Lead" })
+  | (ConversaoComum & {
+      evento: "Purchase";
+      valorCentavos: number;
+      moeda: string;
+    });
 
 /**
  * O resultado, com a FÍSICA da falha declarada — não um booleano.
@@ -131,10 +140,7 @@ export interface CredencialDeConversao {
 /** O contrato que todo transporte de conversão cumpre. */
 export interface TransporteDeConversao {
   plataforma: PlataformaDeAnuncio;
-  enviar(
-    credencial: CredencialDeConversao,
-    conversao: ConversaoOffline,
-  ): Promise<ResultadoDeEnvio>;
+  enviar(credencial: CredencialDeConversao, conversao: ConversaoOffline): Promise<ResultadoDeEnvio>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

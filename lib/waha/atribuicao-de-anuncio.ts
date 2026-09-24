@@ -6,7 +6,7 @@
  * `pnpm lint:channels` reprova. O formato agnóstico e a gravação estão em
  * `lib/leads/atribuicao-de-anuncio.ts`.
  */
-import type { AtribuicaoDeAnuncio, Bruto } from "@/lib/leads/atribuicao-de-anuncio";
+import type { AtribuicaoMeta, Bruto } from "@/lib/leads/atribuicao-de-anuncio";
 import { obj, str } from "@/lib/leads/atribuicao-de-anuncio";
 
 /**
@@ -20,7 +20,7 @@ import { obj, str } from "@/lib/leads/atribuicao-de-anuncio";
  * primeiro na lista de candidatos), então a busca varre os tipos comuns em
  * vez de assumir um só.
  */
-export function extrairAtribuicaoWaha(messageRaw: unknown): AtribuicaoDeAnuncio | null {
+export function extrairAtribuicaoWaha(messageRaw: unknown): AtribuicaoMeta | null {
   const m = obj(messageRaw);
   if (!m) return null;
 
@@ -41,17 +41,17 @@ export function extrairAtribuicaoWaha(messageRaw: unknown): AtribuicaoDeAnuncio 
   const tipo = str(ad.sourceType) ?? str(ad.source_type);
   if (tipo && tipo !== "ad") return null;
 
-  const sourceId = str(ad.ctwaClid) ?? str(ad.sourceId);
+  const ctwaClid = str(ad.ctwaClid) ?? str(ad.ctwa_clid);
   // Mesma separação do irmão da API oficial: o clique é `ctwaClid`, o anúncio é
   // `sourceId`, e quem traz os dois não pode perder um.
   const adId = str(ad.sourceId);
   const titulo = str(ad.title);
   const sourceUrl = str(ad.sourceUrl);
-  if (!sourceId && !titulo && !sourceUrl) return null;
+  if (!ctwaClid && !adId && !titulo && !sourceUrl) return null;
 
   return {
     plataforma: "meta_ads",
-    sourceId,
+    ctwaClid,
     adId,
     titulo,
     corpo: str(ad.body),

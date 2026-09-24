@@ -8698,16 +8698,17 @@ export const DICIONARIO: Traducoes = {
   // ⚠️ `Conversões` também é o rótulo no menu lateral (`lib/navigation/registry.ts`),
   // e é a MESMA chave: mudar a tradução aqui muda os dois lugares.
   "Conversões": { es: "Conversiones" },
-  "Quando um negócio que veio de anúncio é marcado como ganho, o valor da venda volta para a plataforma que trouxe o cliente. É esse retorno que ensina o anúncio a procurar mais gente parecida com quem comprou.":
-    { es: "Cuando un negocio que llegó por un anuncio se marca como ganado, el valor de la venta se envía de vuelta a la plataforma que trajo al cliente. Así el anuncio aprende a buscar más personas parecidas a quienes compraron." },
-  "O envio está pausado. As vendas continuam sendo registradas aqui, mas não vão para a plataforma enquanto isto estiver desligado.":
-    { es: "El envío está en pausa. Las ventas se siguen registrando aquí, pero no se envían a la plataforma mientras esta opción esté desactivada." },
-  "Modo de teste ligado: as vendas vão marcadas como teste e não contam para a otimização. Apague o código de teste quando terminar de conferir.":
-    { es: "Modo de prueba activado: las ventas se envían marcadas como prueba y no cuentan para la optimización. Borra el código de prueba cuando termines de revisar." },
-  "Vendas que não foram reportadas": { es: "Ventas sin reportar" },
-  "reportadas com sucesso": { es: "reportadas con éxito" },
-  "Nenhuma pendência. Ou tudo que veio de anúncio foi reportado, ou ainda não fechou nenhuma venda com origem em anúncio.":
-    { es: "No hay pendientes. Todo lo que llegó de anuncios ya se reportó, o todavía no se ha cerrado ninguna venta que venga de un anuncio." },
+  "Quando alguém chega por um anúncio da Meta, o nascimento do negócio é reportado como Lead. Se o negócio for ganho depois, o valor da venda também volta para a plataforma. Esses sinais ensinam o anúncio a procurar mais gente parecida.":
+    { es: "Cuando alguien llega por un anuncio de Meta, el nacimiento del negocio se reporta como Lead. Si el negocio se gana después, el valor de la venta también vuelve a la plataforma. Estas señales enseñan al anuncio a buscar más gente parecida." },
+  "O envio está pausado. As conversões continuam sendo registradas aqui, mas não vão para a plataforma enquanto isto estiver desligado.":
+    { es: "El envío está en pausa. Las conversiones se siguen registrando aquí, pero no se envían a la plataforma mientras esta opción esté desactivada." },
+  "Modo de teste ligado: as conversões vão marcadas como teste e não contam para a otimização. Apague o código de teste quando terminar de conferir.":
+    { es: "Modo de prueba activado: las conversiones se envían marcadas como prueba y no cuentan para la optimización. Borra el código de prueba cuando termines de revisar." },
+  "Conversões que não foram reportadas": { es: "Conversiones que no fueron reportadas" },
+  "conversões reportadas com sucesso": { es: "conversiones reportadas con éxito" },
+  "Nenhuma pendência. Ou tudo que veio de anúncio foi reportado, ou ainda não houve um lead ou uma venda atribuível.":
+    { es: "No hay pendientes. Todo lo que llegó de anuncios ya se reportó, o todavía no hubo un lead o una venta atribuible." },
+  "Compra": { es: "Compra" },
   "Negócio": { es: "Negocio" },
   "O que houve": { es: "Qué pasó" },
   "(sem título)": { es: "(sin título)" },
@@ -8722,9 +8723,9 @@ export const DICIONARIO: Traducoes = {
   "Guardado criptografado. Ele nunca volta para esta tela depois de salvo.":
     { es: "Se guarda cifrado. Una vez guardado, nunca se vuelve a mostrar en esta pantalla." },
   "Código de teste (opcional)": { es: "Código de prueba (opcional)" },
-  "Enquanto preenchido, as vendas vão marcadas como teste e não contam para a otimização. Apague quando terminar de conferir.":
-    { es: "Mientras este campo tenga contenido, las ventas se envían marcadas como prueba y no cuentan para la optimización. Bórralo cuando termines de revisar." },
-  "Reportar vendas automaticamente": { es: "Reportar ventas automáticamente" },
+  "Enquanto preenchido, leads e vendas vão marcados como teste e não contam para a otimização. Apague quando terminar de conferir.":
+    { es: "Mientras este campo tenga contenido, los leads y las ventas se envían marcados como prueba y no cuentan para la optimización. Bórralo cuando termines de revisar." },
+  "Reportar leads e vendas automaticamente": { es: "Reportar leads y ventas automáticamente" },
   "Desligar pausa o envio e mantém a credencial gravada.":
     { es: "Desactivarlo pausa el envío y conserva la credencial guardada." },
   "Salvar conexão": { es: "Guardar conexión" },

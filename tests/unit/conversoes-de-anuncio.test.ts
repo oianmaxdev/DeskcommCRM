@@ -8,7 +8,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { conversaoDeVendaHandler } from "@/lib/conversoes/envio.handler";
-import type { EventRow } from "@/lib/event-log/dispatcher";
+import { conversaoDeLeadHandler } from "@/lib/conversoes/lead.handler";
+import {
+  dispatchEvent,
+  getRegisteredHandlers,
+  registerHandler,
+  type EventRow,
+} from "@/lib/event-log/dispatcher";
+import { ensureHandlersRegistered } from "@/lib/event-log/register-handlers";
+import { CHAVE_DA_PROVA_META_CAPI_LEAD } from "@/lib/leads/prova-meta-capi-lead";
 import { INTERNOS, transporteMeta } from "@/lib/plataformas-de-anuncio/meta/conversions";
 import { PLATAFORMAS, transporteDe } from "@/lib/plataformas-de-anuncio/registry";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -49,7 +57,35 @@ function fakeAdmin(tabelas: Tabelas) {
       };
       return construtor;
     },
-    rpc: async () => ({ data: "token-decifrado", error: null }),
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      if (name === "fn_claim_ad_conversion_dispatch") {
+        return {
+          data: [
+            {
+              acquired: true,
+              token: "44444444-4444-4444-4444-444444444444",
+              current_status: "processing",
+            },
+          ],
+          error: null,
+        };
+      }
+      if (name === "fn_settle_ad_conversion_dispatch") {
+        upserts.push({
+          tabela: "ad_conversion_dispatches",
+          valores: { status: args.p_status, reason: args.p_reason },
+        });
+        return { data: true, error: null };
+      }
+      if (name === "fn_record_ad_conversion_outcome") {
+        upserts.push({
+          tabela: "ad_conversion_dispatches",
+          valores: { status: args.p_status, reason: args.p_reason },
+        });
+        return { data: true, error: null };
+      }
+      return { data: "token-decifrado", error: null };
+    },
   };
 }
 
@@ -64,7 +100,12 @@ const leadGanho = {
 
 const contatoComAnuncio = {
   phone_number: "+55 (11) 98888-7777",
-  source_metadata: { ad_platform: "meta_ads", ad_source_id: "CLIQUE_ABC" },
+  source_metadata: {
+    ad_platform: "meta_ads",
+    ad_source_id: "CLIQUE_ABC",
+    ad_id: "ANUNCIO_123",
+    ad_raw: { ctwa_clid: "CLIQUE_ABC", source_id: "ANUNCIO_123" },
+  },
 };
 
 const conexaoAtiva = {
@@ -141,7 +182,197 @@ describe("as duas portas do fechamento", () => {
   });
 });
 
+describe("lead.created tem consumidores coexistentes", () => {
+  it("mantém automações e acrescenta a conversão sem substituir o registro", () => {
+    ensureHandlersRegistered();
+    const chaves = getRegisteredHandlers()
+      .filter((handler) => handler.events.includes("lead.created"))
+      .map((handler) => handler.key);
+    expect(chaves).toContain("automation-rules");
+    expect(chaves).toContain(conversaoDeLeadHandler.key);
+  });
+
+  it("uma falha de um consumidor não impede o consumidor seguinte", async () => {
+    ensureHandlersRegistered();
+    const jaRegistrados = getRegisteredHandlers().map((handler) => handler.key);
+    const segundo = vi.fn(async () => ({
+      consumer_key: "teste.lead-created.segundo",
+      status: "ok" as const,
+    }));
+    registerHandler({
+      key: "teste.lead-created.primeiro",
+      events: ["lead.created"],
+      handle: async () => {
+        throw new Error("falha isolada");
+      },
+    });
+    registerHandler({
+      key: "teste.lead-created.segundo",
+      events: ["lead.created"],
+      handle: segundo,
+    });
+
+    const resultados = await dispatchEvent({
+      ...evento("lead.created"),
+      // Os handlers reais já são cobertos acima. Aqui isolamos a propriedade do
+      // dispatcher: uma exceção não interrompe o próximo consumidor do fato.
+      consumed_by: jaRegistrados,
+    });
+
+    expect(segundo).toHaveBeenCalledOnce();
+    expect(resultados).toEqual([
+      expect.objectContaining({ consumer_key: "teste.lead-created.primeiro", status: "error" }),
+      { consumer_key: "teste.lead-created.segundo", status: "ok" },
+    ]);
+  });
+});
+
+describe("Meta CAPI Lead", () => {
+  const criadoEm = "2026-09-20T12:34:56.000Z";
+  const leadComProva = {
+    id: LEAD,
+    created_at: criadoEm,
+    contact_id: CONTATO,
+    source_metadata: {
+      [CHAVE_DA_PROVA_META_CAPI_LEAD]: {
+        platform: "meta_ads",
+        source_type: "ad",
+        ctwa_clid: "CTWA_DO_NASCIMENTO",
+        message_id: "55555555-5555-5555-5555-555555555555",
+        conversation_id: "66666666-6666-6666-6666-666666666666",
+        captured_at: criadoEm,
+      },
+    },
+  };
+
+  it("usa somente o snapshot do nascimento e o created_at real", async () => {
+    vi.mocked(createAdminClient).mockReturnValue(
+      fakeAdmin({
+        crm_leads: leadComProva,
+        contacts: { phone_number: "+5511988887777" },
+        ad_platform_connections: conexaoAtiva,
+      }) as never,
+    );
+    let corpo = "";
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      corpo = String((init as RequestInit).body);
+      return new Response("{}", { status: 200 });
+    });
+
+    const r = await conversaoDeLeadHandler.handle(evento("lead.created"));
+
+    expect(r.status).toBe("ok");
+    const enviado = JSON.parse(corpo).data[0];
+    expect(enviado.event_id).toBe(`${LEAD}:Lead`);
+    expect(enviado.event_time).toBe(Math.floor(new Date(criadoEm).getTime() / 1000));
+    expect(enviado.user_data.ctwa_clid).toBe("CTWA_DO_NASCIMENTO");
+    expect(enviado).not.toHaveProperty("custom_data");
+  });
+
+  it("não aceita first-touch, source_id ou ad_id sem snapshot reservado", async () => {
+    vi.mocked(createAdminClient).mockReturnValue(
+      fakeAdmin({
+        crm_leads: {
+          ...leadComProva,
+          source_metadata: {
+            ad_source_id: "CLICK_ANTIGO",
+            source_id: "AMBIGUO",
+            ad_id: "ID_DO_ANUNCIO",
+          },
+        },
+        contacts: contatoComAnuncio,
+        ad_platform_connections: conexaoAtiva,
+      }) as never,
+    );
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const r = await conversaoDeLeadHandler.handle(evento("lead.created"));
+
+    expect(r).toMatchObject({ status: "skipped", detail: "missing_birth_attribution" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(upserts).toHaveLength(0);
+  });
+
+  it("não aceita referral orgânico source_type=post", async () => {
+    vi.mocked(createAdminClient).mockReturnValue(
+      fakeAdmin({
+        crm_leads: {
+          ...leadComProva,
+          source_metadata: {
+            [CHAVE_DA_PROVA_META_CAPI_LEAD]: {
+              ...leadComProva.source_metadata[CHAVE_DA_PROVA_META_CAPI_LEAD],
+              source_type: "post",
+            },
+          },
+        },
+      }) as never,
+    );
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const r = await conversaoDeLeadHandler.handle(evento("lead.created"));
+
+    expect(r).toMatchObject({ status: "skipped", detail: "missing_birth_attribution" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("a mesma venda nunca é contada duas vezes", () => {
+  it("Purchase legado com source_id mas sem ctwa_clid real não envia o ID do anúncio", async () => {
+    vi.mocked(createAdminClient).mockReturnValue(
+      fakeAdmin({
+        crm_leads: leadGanho,
+        contacts: {
+          phone_number: "+5511988887777",
+          source_metadata: {
+            ad_platform: "meta_ads",
+            ad_source_id: "ANUNCIO_LEGADO",
+            ad_id: "ANUNCIO_LEGADO",
+            ad_raw: { source_id: "ANUNCIO_LEGADO" },
+          },
+        },
+        ad_platform_connections: conexaoAtiva,
+      }) as never,
+    );
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const r = await conversaoDeVendaHandler.handle(evento("lead.won"));
+
+    expect(r).toMatchObject({ status: "skipped", detail: "sem_atribuicao" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(upserts).toHaveLength(0);
+  });
+
+  it("Purchase usa o ctwa_clid do referral bruto mesmo se ad_source_id legado é o anúncio", async () => {
+    vi.mocked(createAdminClient).mockReturnValue(
+      fakeAdmin({
+        crm_leads: leadGanho,
+        contacts: {
+          phone_number: "+5511988887777",
+          source_metadata: {
+            ad_platform: "meta_ads",
+            ad_source_id: "ANUNCIO_LEGADO",
+            ad_raw: { ctwaClid: "CLIQUE_REAL", sourceId: "ANUNCIO_LEGADO" },
+          },
+        },
+        ad_platform_connections: conexaoAtiva,
+      }) as never,
+    );
+    let corpo = "";
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      corpo = String((init as RequestInit).body);
+      return new Response("{}", { status: 200 });
+    });
+
+    const r = await conversaoDeVendaHandler.handle(evento("lead.won"));
+
+    expect(r.status).toBe("ok");
+    expect(JSON.parse(corpo).data[0]).toMatchObject({
+      event_name: "Purchase",
+      user_data: { ctwa_clid: "CLIQUE_REAL" },
+      custom_data: { value: 250, currency: "BRL" },
+    });
+  });
+
   it("não reenvia o que já consta como enviado", async () => {
     vi.mocked(createAdminClient).mockReturnValue(
       fakeAdmin({
@@ -283,6 +514,39 @@ describe("a física da falha decide o tratamento", () => {
 });
 
 describe("o transporte", () => {
+  it("envia Lead com o ctwa_clid e sem custom_data financeiro inventado", async () => {
+    let corpo = "";
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_u, init) => {
+      corpo = String((init as RequestInit).body);
+      return new Response("{}", { status: 200 });
+    });
+
+    await transporteMeta.enviar(
+      { datasetId: "1", accessToken: "t", testEventCode: "TESTE" },
+      {
+        organizationId: ORG,
+        leadId: LEAD,
+        evento: "Lead",
+        eventoId: `${LEAD}:Lead`,
+        ocorridoEm: new Date("2026-09-20T12:34:56.000Z"),
+        cliqueDeOrigem: "CTWA_REAL",
+        telefone: "5511988887777",
+      },
+    );
+
+    const payload = JSON.parse(corpo);
+    expect(payload.test_event_code).toBe("TESTE");
+    expect(payload.data[0]).toMatchObject({
+      event_name: "Lead",
+      event_id: `${LEAD}:Lead`,
+      event_time: 1789907696,
+      action_source: "business_messaging",
+      messaging_channel: "whatsapp",
+      user_data: { ctwa_clid: "CTWA_REAL" },
+    });
+    expect(payload.data[0]).not.toHaveProperty("custom_data");
+  });
+
   it("recusa evento mais velho que o teto da plataforma", async () => {
     // O `event_time` é o `closed_at` real. Um backlog de drain maior que 7 dias
     // não vira "atrasado", vira PERDIDO — e precisa dizer isso, não tentar.

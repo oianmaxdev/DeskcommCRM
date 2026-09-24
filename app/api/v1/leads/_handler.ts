@@ -25,6 +25,10 @@ import {
 } from "@/lib/leads/motivo-da-perda";
 import type { CreateLeadInput, UpdateLeadInput } from "@/lib/schemas";
 import { ehCorrecaoDeMovimentoDaIa } from "@/lib/leads/correcao-humana";
+import {
+  ocultarProvaMetaCapiLead,
+  removerProvaMetaCapiLead,
+} from "@/lib/leads/prova-meta-capi-lead";
 
 type SB = SupabaseClient;
 
@@ -204,7 +208,7 @@ export async function listLeadsHandler(
     hasMore && last
       ? encLeadCursor({ created_at: String(last.created_at), id: String(last.id) })
       : null;
-  return { leads: page, cursor, has_more: hasMore };
+  return { leads: page.map(ocultarProvaMetaCapiLead), cursor, has_more: hasMore };
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +247,7 @@ export async function getLeadHandler(
       traduzir("Lead não encontrado.", ctx.idioma ?? "pt-BR"),
     );
   }
-  return data as Record<string, unknown>;
+  return ocultarProvaMetaCapiLead(data as Record<string, unknown>);
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +346,9 @@ export async function createLeadHandler(
       expected_close_date: input.expected_close_date ?? null,
       tags: input.tags ?? [],
       source: input.source,
-      source_metadata: input.source_metadata ?? {},
+      // Chave reservada: só a RPC transacional do nascimento automático pode
+      // criá-la. Manual, import, webhook genérico e clone passam todos aqui.
+      source_metadata: removerProvaMetaCapiLead(input.source_metadata),
       external_id: input.external_id ?? null,
       custom_fields: input.custom_fields ?? {},
       status: "open",
@@ -396,7 +402,7 @@ export async function createLeadHandler(
     },
   });
 
-  return lead as Record<string, unknown>;
+  return ocultarProvaMetaCapiLead(lead as Record<string, unknown>);
 }
 
 // ---------------------------------------------------------------------------
@@ -606,7 +612,7 @@ export async function updateLeadHandler(
     metadata: { ...a.metadataActor, fields },
   });
 
-  return (fresh ?? updated) as Record<string, unknown>;
+  return ocultarProvaMetaCapiLead((fresh ?? updated) as Record<string, unknown>);
 }
 
 // ---------------------------------------------------------------------------
@@ -920,5 +926,5 @@ export async function moveLeadHandler(
     },
   });
 
-  return finalLead;
+  return ocultarProvaMetaCapiLead(finalLead);
 }

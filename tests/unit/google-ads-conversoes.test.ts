@@ -12,7 +12,7 @@ import {
   montarUrlDeConsentimento,
 } from "@/lib/plataformas-de-anuncio/google/oauth";
 import { emitirEstado, verificarEstado } from "@/lib/plataformas-de-anuncio/google/estado";
-import { INTERNOS } from "@/lib/plataformas-de-anuncio/google/conversions";
+import { INTERNOS, transporteGoogle } from "@/lib/plataformas-de-anuncio/google/conversions";
 import { lerCredencial } from "@/lib/plataformas-de-anuncio/credenciais";
 
 const SEGREDO = "0123456789abcdef0123456789abcdef";
@@ -142,7 +142,10 @@ describe("estado (state assinado)", () => {
     const agora = new Date("2026-01-01T00:00:00Z");
     let state = "";
     for (let i = 0; i < 10_000 && !state.endsWith("00"); i++) {
-      state = emitirEstado({ organizationId: ORG, userId: USER }, { segredo: SEGREDO, agora, nonce: `n${i}` });
+      state = emitirEstado(
+        { organizationId: ORG, userId: USER },
+        { segredo: SEGREDO, agora, nonce: `n${i}` },
+      );
     }
     expect(state.endsWith("00"), "nenhum nonce produziu assinatura terminada em 00").toBe(true);
     const adulterado = adulterar(state);
@@ -151,11 +154,10 @@ describe("estado (state assinado)", () => {
 
   it("recusa quando assinado com OUTRO segredo", () => {
     const agora = new Date("2026-01-01T00:00:00Z");
-    const state = emitirEstado(
-      { organizationId: ORG, userId: USER },
-      { segredo: SEGREDO, agora },
-    );
-    expect(verificarEstado(state, { segredo: "outro-segredo-bem-diferente-0000", agora })).toBeNull();
+    const state = emitirEstado({ organizationId: ORG, userId: USER }, { segredo: SEGREDO, agora });
+    expect(
+      verificarEstado(state, { segredo: "outro-segredo-bem-diferente-0000", agora }),
+    ).toBeNull();
   });
 
   it("lança com segredo curto demais", () => {
@@ -188,8 +190,32 @@ describe("classificaErro", () => {
   });
 
   it("token/argumento inválido é permanente — precisa de alguém mexer na configuração", () => {
-    const r = INTERNOS.classificaErro(401, { status: "UNAUTHENTICATED", message: "token inválido" });
+    const r = INTERNOS.classificaErro(401, {
+      status: "UNAUTHENTICATED",
+      message: "token inválido",
+    });
     expect(r.tipo).toBe("permanente");
+  });
+});
+
+describe("o transporte Google só aceita Purchase", () => {
+  it("recusa Lead antes de renovar token ou chamar rede", async () => {
+    const r = await transporteGoogle.enviar(
+      { datasetId: "", accessToken: "", testEventCode: null },
+      {
+        organizationId: ORG,
+        leadId: USER,
+        evento: "Lead",
+        eventoId: `${USER}:Lead`,
+        ocorridoEm: new Date(),
+        cliqueDeOrigem: "ctwa",
+        telefone: null,
+      },
+    );
+    expect(r).toEqual({
+      tipo: "permanente",
+      detalhe: "evento Lead não é suportado pelo Google Ads",
+    });
   });
 });
 

@@ -8,8 +8,8 @@
  * Não reaproveito o tipo `AtribuicaoDeAnuncio` daquele módulo de propósito. Ele
  * é o formato de ESCRITA e carrega `bruto` — o payload inteiro de onde o dado
  * saiu, que existe para ser prova e pode ter qualquer tamanho. Quem vai enviar
- * precisa de três campos, e arrastar o payload cru para dentro do caminho de
- * envio só criaria chance de ele vazar para um log ou para o fio.
+ * precisa de três campos. O leitor consulta `ad_raw` apenas para comprovar o
+ * `ctwa_clid` Meta legado e nunca repassa o payload cru ao transporte ou log.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -18,7 +18,7 @@ import type { PlataformaDeAnuncio } from "@/lib/plataformas-de-anuncio/types";
 
 export interface AtribuicaoParaEnvio {
   plataforma: PlataformaDeAnuncio;
-  /** `ad_source_id` — o `ctwa_clid`, o clique que abriu a conversa. */
+  /** Clique verificado no referral Meta ou `gclid` capturado do Google. */
   cliqueDeOrigem: string;
   telefone: string | null;
 }
@@ -55,12 +55,9 @@ export async function lerAtribuicao(
     linha.source_metadata && typeof linha.source_metadata === "object"
       ? (linha.source_metadata as Record<string, unknown>)
       : {};
-
-  const clique = typeof meta.ad_source_id === "string" ? meta.ad_source_id.trim() : "";
-  // Sem o clique não há atribuição utilizável: é ele que liga a venda ao anúncio.
-  // Ter `ad_platform` sem `ad_source_id` acontece quando o payload trouxe o
-  // referral sem o identificador — a 0164 grava os dois como vieram.
-  if (!clique) return { temAtribuicao: false, motivo: "sem_atribuicao" };
+  if (meta.ad_platform == null) {
+    return { temAtribuicao: false, motivo: "sem_atribuicao" };
+  }
 
   // Plataforma que não está no vocabulário significa dado gravado por uma versão
   // futura (ou corrompido). Recusar explicitamente é melhor que assumir a Meta e
@@ -68,6 +65,19 @@ export async function lerAtribuicao(
   if (!ehPlataformaConhecida(meta.ad_platform)) {
     return { temAtribuicao: false, motivo: "plataforma_desconhecida" };
   }
+
+  // Antes da Feature A, o extrator Meta caía de `ctwa_clid` para `source_id`
+  // (id do anúncio) e gravava ambos em `ad_source_id`. Uma linha antiga sem
+  // referral bruto não prova qual dos dois foi persistido. A prova do clique
+  // está no campo próprio do payload causal, inclusive para dados legados.
+  const bruto = meta.ad_raw && typeof meta.ad_raw === "object" && !Array.isArray(meta.ad_raw)
+    ? (meta.ad_raw as Record<string, unknown>)
+    : null;
+  const clid = bruto?.ctwa_clid ?? bruto?.ctwaClid;
+  const clique = meta.ad_platform === "meta_ads"
+    ? (typeof clid === "string" ? clid.trim() : "")
+    : (typeof meta.ad_source_id === "string" ? meta.ad_source_id.trim() : "");
+  if (!clique) return { temAtribuicao: false, motivo: "sem_atribuicao" };
 
   return {
     temAtribuicao: true,

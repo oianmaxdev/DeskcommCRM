@@ -881,7 +881,10 @@ export type Database = {
 
       ad_conversion_dispatches: {
         Row: {
+          attempt_count: number
           attempted_at: string
+          claim_token: string | null
+          claimed_until: string | null
           created_at: string
           currency: string | null
           detail: string | null
@@ -897,7 +900,10 @@ export type Database = {
           value_cents: number | null
         }
         Insert: {
+          attempt_count?: number
           attempted_at?: string
+          claim_token?: string | null
+          claimed_until?: string | null
           created_at?: string
           currency?: string | null
           detail?: string | null
@@ -913,7 +919,10 @@ export type Database = {
           value_cents?: number | null
         }
         Update: {
+          attempt_count?: number
           attempted_at?: string
+          claim_token?: string | null
+          claimed_until?: string | null
           created_at?: string
           currency?: string | null
           detail?: string | null
@@ -9257,6 +9266,21 @@ export type Database = {
         Args: { p_org: string; p_owner_user_id: string }
         Returns: boolean
       }
+      fn_claim_ad_conversion_dispatch: {
+        Args: {
+          p_event_id: string
+          p_event_name: string
+          p_lead: string
+          p_lease_seconds?: number
+          p_org: string
+          p_platform: string
+        }
+        Returns: {
+          acquired: boolean
+          current_status: string
+          token: string
+        }[]
+      }
       fn_claim_due_followup_enrollments: {
         Args: { p_lease_seconds: number; p_limit: number }
         Returns: {
@@ -9440,9 +9464,50 @@ export type Database = {
           pipeline_id: string
         }[]
       }
+      fn_nascer_lead_da_conversa: {
+        Args: {
+          p_contact: string
+          p_conversation?: string
+          p_message?: string
+          p_meta_ctwa_clid?: string
+          p_org: string
+          p_pipeline: string
+          p_source: string
+          p_source_metadata?: Json
+          p_stage: string
+          p_tags?: string[]
+          p_title: string
+        }
+        Returns: string
+      }
       fn_podar_fila_de_jobs: {
         Args: { p_limite?: number; p_retencao_dias?: number }
         Returns: number
+      }
+      fn_record_ad_conversion_outcome: {
+        Args: {
+          p_currency?: string
+          p_detail?: string
+          p_event_id: string
+          p_event_name: string
+          p_lead: string
+          p_org: string
+          p_platform: string
+          p_reason?: string
+          p_status: string
+          p_value_cents?: number
+        }
+        Returns: boolean
+      }
+      fn_release_ad_conversion_dispatch: {
+        Args: {
+          p_claim_token: string
+          p_detail?: string
+          p_event_name: string
+          p_lead: string
+          p_org: string
+        }
+        Returns: boolean
       }
       fn_reply_action: {
         Args: {
@@ -9500,6 +9565,20 @@ export type Database = {
       fn_semear_tipos_de_agendamento: {
         Args: { p_organization_id: string }
         Returns: number
+      }
+      fn_settle_ad_conversion_dispatch: {
+        Args: {
+          p_claim_token: string
+          p_currency?: string
+          p_detail?: string
+          p_event_name: string
+          p_lead: string
+          p_org: string
+          p_reason?: string
+          p_status: string
+          p_value_cents?: number
+        }
+        Returns: boolean
       }
       fn_upsert_wa_contact: {
         Args: {
@@ -10140,4 +10219,3 @@ export const Constants = {
     },
   },
 } as const
-

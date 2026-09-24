@@ -16,7 +16,7 @@ describe("extrairAtribuicaoMeta — referral do webhook oficial", () => {
     });
     expect(r).toEqual({
       plataforma: "meta_ads",
-      sourceId: "AfE...clid",
+      ctwaClid: "AfE...clid",
       adId: "120210000000000",
       titulo: "Agende sua consulta",
       corpo: "Clique e fale com a gente",
@@ -31,16 +31,16 @@ describe("extrairAtribuicaoMeta — referral do webhook oficial", () => {
       ctwaClid: "clid-123",
       sourceUrl: "https://fb.me/x",
     });
-    expect(r?.sourceId).toBe("clid-123");
+    expect(r?.ctwaClid).toBe("clid-123");
     expect(r?.sourceUrl).toBe("https://fb.me/x");
     // Sem `sourceId` no payload não há anúncio a guardar — e `null` aqui é
     // diferente de repetir o clique, que diria "o anúncio é este clique".
     expect(r?.adId).toBeNull();
   });
 
-  it("cai pra source_id quando não há ctwa_clid", () => {
+  it("NÃO usa source_id do anúncio como ctwa_clid", () => {
     const r = extrairAtribuicaoMeta({ source_type: "ad", source_id: "abc" });
-    expect(r?.sourceId).toBe("abc");
+    expect(r?.ctwaClid).toBeNull();
     expect(r?.adId).toBe("abc");
   });
 
@@ -54,7 +54,7 @@ describe("extrairAtribuicaoMeta — referral do webhook oficial", () => {
       source_id: "120210000000000",
       ctwa_clid: "AfE...clid",
     });
-    expect(r?.sourceId).toBe("AfE...clid");
+    expect(r?.ctwaClid).toBe("AfE...clid");
     expect(r?.adId).toBe("120210000000000");
   });
 
@@ -92,7 +92,7 @@ describe("extrairAtribuicaoWaha — externalAdReplyInfo do Baileys", () => {
     });
     expect(r).toEqual({
       plataforma: "meta_ads",
-      sourceId: "clid-999",
+      ctwaClid: "clid-999",
       adId: "ad-999",
       titulo: "Agende sua consulta",
       corpo: "Clique e fale com a gente",
@@ -107,7 +107,7 @@ describe("extrairAtribuicaoWaha — externalAdReplyInfo do Baileys", () => {
         contextInfo: { externalAdReplyInfo: { sourceId: "ad-1", title: "X" } },
       },
     });
-    expect(r?.sourceId).toBe("ad-1");
+    expect(r?.ctwaClid).toBeNull();
     expect(r?.adId).toBe("ad-1");
   });
 
@@ -143,7 +143,7 @@ describe("extrairAtribuicaoWaha — externalAdReplyInfo do Baileys", () => {
           },
         },
       }),
-    ).toMatchObject({ plataforma: "meta_ads", sourceId: "x", titulo: "Promo" });
+    ).toMatchObject({ plataforma: "meta_ads", ctwaClid: "x", titulo: "Promo" });
   });
 
   it("nulo pra payload ausente/tipo errado", () => {
@@ -160,7 +160,7 @@ describe("estamparAtribuicaoDoContato", () => {
 
     await estamparAtribuicaoDoContato(admin, "org-1", "contact-1", {
       plataforma: "meta_ads",
-      sourceId: "clid-1",
+      ctwaClid: "clid-1",
       adId: "120210000000000",
       titulo: "Título",
       corpo: "Corpo",
@@ -194,7 +194,7 @@ describe("estamparAtribuicaoDoContato", () => {
     await expect(
       estamparAtribuicaoDoContato(admin, "org-1", "contact-1", {
         plataforma: "meta_ads",
-        sourceId: null,
+        ctwaClid: null,
         adId: null,
         titulo: null,
         corpo: null,

@@ -129,6 +129,10 @@ async function enviar(
   credencial: CredencialDeConversao,
   conversao: ConversaoOffline,
 ): Promise<ResultadoDeEnvio> {
+  if (conversao.evento !== "Purchase") {
+    return { tipo: "permanente", detalhe: "evento Lead não é suportado pelo Google Ads" };
+  }
+
   const google = credencial.google;
   if (!google) {
     // Inalcançável em uso normal: `credenciais.ts` só monta este campo para
@@ -213,4 +217,9 @@ export const transporteGoogle: TransporteDeConversao = {
 };
 
 /** Exportados para o teste vigiar as regras sem falar com a rede. */
-export const INTERNOS = { formatarDataDeConversao, classificaErro, lerCorpoDeErro, soDigitos } as const;
+export const INTERNOS = {
+  formatarDataDeConversao,
+  classificaErro,
+  lerCorpoDeErro,
+  soDigitos,
+} as const;

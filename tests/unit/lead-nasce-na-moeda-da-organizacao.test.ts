@@ -41,6 +41,7 @@ vi.mock("@/lib/atendimento/origem", () => ({
 import { createLeadHandler } from "@/app/api/v1/leads/_handler";
 import { crmCreateLead } from "@/lib/mcp/tools/leads";
 import { createLeadSchema } from "@/lib/schemas/leads";
+import { CHAVE_DA_PROVA_META_CAPI_LEAD } from "@/lib/leads/prova-meta-capi-lead";
 
 const ORG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const PIPELINE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -121,6 +122,28 @@ describe("createLeadSchema", () => {
 });
 
 describe("createLeadHandler — moeda", () => {
+  it("criação manual/genérica não consegue forjar o snapshot reservado", async () => {
+    const { cliente, inseridos } = supabaseCom("BRL");
+    const criado = await createLeadHandler(cliente, ctx, {
+      pipeline_id: PIPELINE,
+      stage_id: ETAPA,
+      title: "Lead manual",
+      tags: [],
+      source: "manual",
+      source_metadata: {
+        canal: "formulario",
+        [CHAVE_DA_PROVA_META_CAPI_LEAD]: {
+          platform: "meta_ads",
+          source_type: "ad",
+          ctwa_clid: "FORJADO",
+        },
+      },
+    });
+
+    expect(inseridos[0]?.source_metadata).toEqual({ canal: "formulario" });
+    expect(criado.source_metadata).toEqual({ canal: "formulario" });
+  });
+
   it("grava a moeda que a ORGANIZAÇÃO declarou quando o corpo não manda nenhuma", async () => {
     const { cliente, inseridos } = supabaseCom("MXN");
 

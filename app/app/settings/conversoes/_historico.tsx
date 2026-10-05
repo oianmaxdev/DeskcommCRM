@@ -71,6 +71,7 @@ export function HistoricoDeEnvios({
   const paginas = Math.max(1, Math.ceil(total / TAMANHO_DA_PAGINA));
   const eventos = [
     { valor: "Purchase", rotulo: "Compra" },
+    { valor: "LeadSubmitted", rotulo: "Nascimento por anúncio" },
     ...regras.map((r) => ({ valor: r.eventName, rotulo: r.label })),
   ];
   const link = (pagina: number) => {

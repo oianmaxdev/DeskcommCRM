@@ -23,6 +23,7 @@
  */
 import type { CreateLeadInput } from "@/lib/schemas";
 import { type ModoReabertura } from "@/lib/leads/reabertura";
+import { removerProvaMetaLeadSubmitted } from "@/lib/leads/prova-meta-lead-submitted";
 
 /** O negócio de origem, como a rota o lê do banco. */
 export interface OrigemParaClonar {
@@ -231,7 +232,7 @@ export function montaPayloadDoClone(
     source: origem.source ?? "manual",
     custom_fields: origem.custom_fields ?? {},
     source_metadata: {
-      ...(origem.source_metadata ?? {}),
+      ...removerProvaMetaLeadSubmitted(origem.source_metadata),
       clonado_de: {
         lead_id: origem.id,
         pipeline_id: origem.pipeline_id,

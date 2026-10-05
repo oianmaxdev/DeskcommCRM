@@ -376,11 +376,19 @@ async function fecharNegociosAbertosDeQuemPediuParar(
  * bloqueado — por isso o passo 1 vem antes.
  */
 async function abrirDemanda(admin: Admin, entrada: EntradaDeMensagem): Promise<void> {
+  if (!entrada.messageId) {
+    logger.warn("pos-entrada: nascimento sem mensagem persistida recusado", {
+      organization_id: entrada.organizationId,
+      conversation_id: entrada.conversationId,
+    });
+    return;
+  }
   try {
     const nascimento = await garantirLeadDaConversa(admin, {
       organizationId: entrada.organizationId,
       contactId: entrada.contactId,
       conversationId: entrada.conversationId,
+      messageId: entrada.messageId,
       nomeDoContato: entrada.nomeDoContato,
       origem: origemDoNegocioPeloCanal(entrada.canal),
     });

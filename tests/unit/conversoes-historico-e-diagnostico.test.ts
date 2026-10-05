@@ -59,6 +59,7 @@ describe("filtros do histórico vindos da URL", () => {
   it("aceita os eventos do livro-razão", () => {
     expect(lerFiltros({ evento: `Etapa:${ETAPA}` }).evento).toBe(`Etapa:${ETAPA}`);
     expect(lerFiltros({ evento: "QualifiedLead" }).evento).toBe("QualifiedLead");
+    expect(lerFiltros({ evento: "LeadSubmitted" }).evento).toBe("LeadSubmitted");
   });
 });
 
@@ -68,6 +69,7 @@ describe("situação de uma linha", () => {
     expect(situacaoDaLinha("error", "recusado_pela_plataforma")).toBe("falha");
     expect(situacaoDaLinha("skipped", "aguardando_processamento")).toBe("aguardando");
     expect(situacaoDaLinha("skipped", "sem_valor")).toBe("nao_enviado");
+    expect(situacaoDaLinha("processing", null)).toBe("aguardando");
   });
   it("período relativo ao agora", () => {
     const agora = new Date("2026-09-27T12:00:00Z");
@@ -80,6 +82,7 @@ describe("situação de uma linha", () => {
     expect(rotuloDoEvento("Purchase", regras)).toBe("Compra");
     expect(rotuloDoEvento(`Etapa:${ETAPA}`, regras)).toBe("Orçamento enviado");
     expect(rotuloDoEvento("QualifiedLead", [])).toBe("Lead qualificado");
+    expect(rotuloDoEvento("LeadSubmitted", [])).toBe("Nascimento por anúncio");
   });
 });
 

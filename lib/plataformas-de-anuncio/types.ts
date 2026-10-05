@@ -49,12 +49,13 @@ export type ApiDeConversaoGoogle = "google_ads" | "data_manager";
 export type PlataformaDeAnuncio = "meta_ads" | "google_ads";
 
 /**
- * Venda, qualificação e cada etapa configurada são resultados distintos e
+ * Nascimento causal, venda, qualificação e cada etapa configurada são resultados distintos e
  * deduplicados separadamente. `Etapa:<uuid>` vem das regras por etapa do Google
  * (0436) e `MetaEtapa:<uuid>` das da Meta (0524).
  */
 export type NomeDoEvento =
   | "Purchase"
+  | "LeadSubmitted"
   | "QualifiedLead"
   | `Etapa:${string}`
   | `MetaEtapa:${string}`;
@@ -79,15 +80,16 @@ export interface ConversaoOffline {
    */
   eventoId: string;
   /**
-   * QUANDO a venda aconteceu (o `closed_at` do lead), nunca quando o worker
-   * acordou. A plataforma recusa evento velho demais, e carimbar `now()` faria
+   * QUANDO o fato aconteceu: `created_at` no nascimento, `closed_at` na venda.
+   * Nunca quando o worker acordou. A plataforma recusa evento velho demais, e carimbar `now()` faria
    * um backlog de drain virar atribuição errada em vez de erro visível.
    */
   ocorridoEm: Date;
   /**
-   * O clique que originou a conversa — `ad_source_id` do contato (0164).
-   * Vazio quando a pessoa chegou pela página com UTM da Meta: aí a identidade
-   * é só o telefone, e o transporte declara a origem de acordo.
+   * O clique que originou a conversa. Purchase e eventos de etapa podem usar a
+   * atribuição do contato; LeadSubmitted de nascimento usa somente a prova
+   * causal versionada do lead, ligada à mensagem inbound atual. Vazio quando
+   * a pessoa chegou pela página com UTM da Meta: aí a identidade é só o telefone.
    */
   cliqueDeOrigem: string;
   identificadoresGoogle?: IdentificadoresGoogle;

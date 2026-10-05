@@ -158,7 +158,7 @@ export default async function ConversoesPage({
     ...(regrasGoogle ?? []).map((r) => ({ eventName: r.eventName, label: r.label })),
     ...(regrasMeta ?? []).map((r) => ({
       eventName: r.eventName,
-      label: `${rotuloDoEventoDaMeta(r.metaEvent)} (Meta)`,
+      label: `Entrada na etapa ${(etapas.data ?? []).find((e) => e.id === r.stageId)?.name ?? r.stageId} (${rotuloDoEventoDaMeta(r.metaEvent)} · Meta)`,
     })),
   ];
   const linhaDaOrganizacao = organizacao.data as { slug: string | null; settings?: unknown } | null;

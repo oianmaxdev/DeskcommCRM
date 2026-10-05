@@ -10,6 +10,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * this endpoint NEVER sets `status` directly.
  */
 import { randomUUID } from "node:crypto";
+import { ocultarProvaMetaNaResposta } from "@/lib/leads/prova-meta-lead-submitted";
 import { type NextRequest } from "next/server";
 import { audit } from "@/lib/audit";
 import { ApiError } from "@/lib/api/types";
@@ -348,5 +349,5 @@ export async function POST(
     },
   });
 
-  return ok(finalLead, { requestId });
+  return ok(ocultarProvaMetaNaResposta(finalLead as Record<string, unknown>), { requestId });
 }

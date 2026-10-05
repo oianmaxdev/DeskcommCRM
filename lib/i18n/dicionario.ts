@@ -352,7 +352,7 @@ export const DICIONARIO: Traducoes = {
   "A plataforma recebeu o envio. A confirmação será consultada automaticamente.": { es: "La plataforma recibió el envío. La confirmación se consultará automáticamente." },
   "A plataforma não concluiu em 24 horas. Consulte o gerenciador e use o botão para verificar novamente.": { es: "La plataforma no terminó en 24 horas. Consulta el administrador y usa el botón para verificar de nuevo." },
   "Falha temporária. Uma nova tentativa foi agendada automaticamente.": { es: "Fallo temporal. Se programó automáticamente un nuevo intento." },
-  "Evento recebido em modo de teste. Desative o teste antes de reportar a venda real.": { es: "Evento recibido en modo de prueba. Desactiva la prueba antes de reportar la venta real." },
+  "Evento recebido em modo de teste. Desative o teste antes de reportar conversões reais.": { es: "Evento recibido en modo de prueba. Desactiva la prueba antes de reportar conversiones reales." },
   "A venda fechou sem valor preenchido. A plataforma exige valor e moeda em uma compra — preencha o valor do negócio e use o botão de reprocessamento.": { es: "La venta se cerró sin importe. La plataforma exige importe y moneda en una compra: completa el valor del negocio y usa el botón para reprocesar." },
 
   // Conversões de anúncios: recebimento, diagnóstico e recuperação.
@@ -3767,6 +3767,10 @@ export const DICIONARIO: Traducoes = {
   "Evento enviado à Meta": {
     es: "Evento enviado a Meta",
   },
+  "Leads de anúncio Click-to-WhatsApp elegíveis já podem informar o nascimento. Esta regra informa a entrada nesta etapa como outro fato, com identificador próprio.": {
+    es: "Los leads elegibles de anuncios Click-to-WhatsApp ya pueden informar su creación. Esta regla informa la entrada en esta etapa como otro hecho, con un identificador propio.",
+  },
+  "Nascimento por anúncio": { es: "Creación por anuncio" },
   "Lead enviado": {
     es: "Lead enviado",
   },

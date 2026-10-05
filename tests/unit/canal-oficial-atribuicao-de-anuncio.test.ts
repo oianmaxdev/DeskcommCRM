@@ -78,6 +78,7 @@ describe("parser do webhook oficial — o referral atravessa", () => {
 const estado = vi.hoisted(() => ({
   ordem: [] as string[],
   rpcs: [] as Array<{ name: string; args: Record<string, unknown> }>,
+  mensagem: null as Record<string, unknown> | null,
 }));
 
 vi.mock("@/lib/channels/contato-por-telefone", () => ({
@@ -108,7 +109,10 @@ function adminFalso(): SupabaseClient {
       const terminal = {
         maybeSingle: async () => ({ data: { id: "message-1" }, error: null }),
       };
-      return { insert: () => ({ select: () => terminal }) };
+      return { insert: (payload: Record<string, unknown>) => {
+        estado.mensagem = payload;
+        return { select: () => terminal };
+      } };
     }
     throw new Error(`tabela inesperada: ${table}`);
   };
@@ -145,6 +149,7 @@ const estampas = () => estado.rpcs.filter((r) => r.name === "fn_estampar_atribui
 beforeEach(() => {
   estado.ordem = [];
   estado.rpcs = [];
+  estado.mensagem = null;
 });
 
 describe("ingestão oficial — atribuição de anúncio no contato", () => {
@@ -168,6 +173,11 @@ describe("ingestão oficial — atribuição de anúncio no contato", () => {
         ad_source_url: "https://fb.me/anuncio123",
       },
     });
+    expect(estado.mensagem?.metadata).toMatchObject({
+      meta_ctwa_message_v1: {
+        platform: "meta_ads", source_type: "ad", ctwa_clid: "ARAkLkA8rmlFeiCktEJQ",
+      },
+    });
   });
 
   it("a atribuição chega ao contato ANTES do lead nascer", async () => {
@@ -183,6 +193,7 @@ describe("ingestão oficial — atribuição de anúncio no contato", () => {
   it("mensagem sem referral não estampa nada", async () => {
     await ingestMetaInbound(adminFalso(), evento(null), { organizationId: "org-1" });
     expect(estampas()).toHaveLength(0);
+    expect(estado.mensagem?.metadata).not.toHaveProperty("meta_ctwa_message_v1");
   });
 
   it("post orgânico compartilhado não é anúncio", async () => {
@@ -192,5 +203,13 @@ describe("ingestão oficial — atribuição de anúncio no contato", () => {
       { organizationId: "org-1" },
     );
     expect(estampas()).toHaveLength(0);
+    expect(estado.mensagem?.metadata).not.toHaveProperty("meta_ctwa_message_v1");
+  });
+
+  it("só ad_id/source_id não vira click ID na mensagem", async () => {
+    await ingestMetaInbound(adminFalso(), evento({
+      source_type: "ad", source_id: "id-do-anuncio",
+    }), { organizationId: "org-1" });
+    expect(estado.mensagem?.metadata).not.toHaveProperty("meta_ctwa_message_v1");
   });
 });

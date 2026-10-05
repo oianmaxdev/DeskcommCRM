@@ -147,6 +147,15 @@ beforeEach(() => {
 });
 
 describe("createLeadHandler — contato", () => {
+  it("entrada genérica não grava prova causal reservada", async () => {
+    await createLeadHandler(banco as never, ctx, novo({
+      source_metadata: {
+        origem: "manual",
+        meta_capi_lead_birth_v1: { ctwa_clid: "forjado" },
+      },
+    }));
+    expect(primeiroLead().valores.source_metadata).toEqual({ origem: "manual" });
+  });
   it("contato de OUTRA empresa: 404, e nada é gravado", async () => {
     await expect(
       createLeadHandler(banco as never, ctx, novo({ contact_id: CONTATO_B })),

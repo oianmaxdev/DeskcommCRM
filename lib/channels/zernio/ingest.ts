@@ -32,6 +32,7 @@ import { marcarConversaComMensagem } from "@/lib/channels/marcar-conversa";
 
 import { extrairAtribuicaoMeta } from "@/lib/channels/atribuicao-de-anuncio-oficial";
 import { estamparAtribuicaoDoContato } from "@/lib/leads/atribuicao-de-anuncio";
+import { ancoraCtwaDaMensagem } from "@/lib/leads/prova-meta-lead-submitted";
 import { extrairEEstamparAtribuicaoGoogle } from "@/lib/plataformas-de-anuncio/google/atribuicao";
 import { pausarIaPorAtendimentoManual } from "@/lib/escalacao/atendimento-manual";
 import {
@@ -623,11 +624,11 @@ async function insertMessage(
       ...(temAnexo && primeiro?.url
         ? { media_url: primeiro.url, media_mime: mimeDoAnexo(primeiro.type) }
         : {}),
-      metadata: temAnexo
-        ? { provider_attachments: msg.attachments }
-        : msg.location
-          ? { location: msg.location }
-          : {},
+      metadata: {
+        ...(temAnexo ? { provider_attachments: msg.attachments } : {}),
+        ...(msg.location ? { location: msg.location } : {}),
+        ...(msg.direction === "inbound" ? ancoraCtwaDaMensagem(extrairAtribuicaoMeta(msg.referral)) : {}),
+      },
       ...(msg.sentAt ? { sent_at: msg.sentAt } : {}),
     })
     .select("id")
@@ -812,4 +813,3 @@ async function carimbarHoraDoDesfecho(
     }
   }
 }
-

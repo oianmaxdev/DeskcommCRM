@@ -106,6 +106,29 @@ afterAll(async () => {
 });
 
 describe("o lead NASCE", () => {
+  it("voz sem message_id não herda prova causal antiga do contato", async () => {
+    const contato = await criarContato(ORG_VIVA, "Cliente por voz");
+    await pool.query(
+      `update contacts set source='meta_ads',
+         source_metadata='{"meta_capi_lead_birth_v1":{"ctwa_clid":"clique-antigo"},"ad_id":"anuncio"}'::jsonb
+       where id=$1 and organization_id=$2`,
+      [contato, ORG_VIVA],
+    );
+    const r = await garantirLeadDaConversa(db, {
+      organizationId: ORG_VIVA,
+      contactId: contato,
+      conversationId: CONVERSA,
+      nomeDoContato: "Cliente por voz",
+    });
+    expect(r.criado).toBe(true);
+    if (!r.criado) return;
+    const { rows } = await pool.query<{ source_metadata: Record<string, unknown> }>(
+      "select source_metadata from crm_leads where id=$1 and organization_id=$2",
+      [r.leadId, ORG_VIVA],
+    );
+    expect(rows[0]?.source_metadata).toEqual({ ad_id: "anuncio" });
+  });
+
   it("a organização nasce com funil padrão — sem isto, todo caminho feliz abaixo é vazio", async () => {
     // Controle positivo do AMBIENTE: o caminho feliz depende de um TRIGGER
     // (`fn_seed_default_pipeline_for_org`). Se ele sumisse do baseline, os casos

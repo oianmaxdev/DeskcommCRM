@@ -77,7 +77,7 @@ import { identidadeDaMeta } from "@/lib/plataformas-de-anuncio/meta/identidade";
 import { RegrasDeConversaoGoogle, type EtapaAberta } from "./_regrasGoogle";
 import { listarRegrasGoogle } from "@/lib/conversoes/regras-google";
 import { RegrasDeConversaoMeta } from "./_regrasMeta";
-import { listarRegrasMeta, rotuloDoEventoDaMeta } from "@/lib/conversoes/regras-meta";
+import { listarRegrasMeta } from "@/lib/conversoes/regras-meta";
 
 export const metadata = { title: "Conversões" };
 export const dynamic = "force-dynamic";
@@ -154,11 +154,12 @@ export default async function ConversoesPage({
   ]);
   // O nome que a pessoa reconhece para cada evento de etapa, das duas
   // plataformas — o Histórico e as pendências leem daqui.
+  const nomePorEtapa = new Map((etapas.data ?? []).map((e) => [e.id, e.name]));
   const rotulosDeEtapa = [
     ...(regrasGoogle ?? []).map((r) => ({ eventName: r.eventName, label: r.label })),
     ...(regrasMeta ?? []).map((r) => ({
       eventName: r.eventName,
-      label: `${rotuloDoEventoDaMeta(r.metaEvent)} (Meta)`,
+      label: nomePorEtapa.get(r.stageId) ?? "",
     })),
   ];
   const linhaDaOrganizacao = organizacao.data as { slug: string | null; settings?: unknown } | null;
@@ -428,7 +429,9 @@ export default async function ConversoesPage({
                           </a>
                         </td>
                         <td className="p-3">
-                          {t(rotuloDoEvento(p.evento, rotulosDeEtapa))}
+                          {p.evento.startsWith("MetaEtapa:")
+                            ? [t("Entrada na etapa"), rotulosDeEtapa.find((r) => r.eventName === p.evento)?.label].filter(Boolean).join(" ")
+                            : t(rotuloDoEvento(p.evento, rotulosDeEtapa))}
                         </td>
                         <td className="p-3">
                           {p.plataforma === "meta_ads"

@@ -37,6 +37,10 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  // Conversão causal de nascimento CTWA e fato distinto de entrada na etapa.
+  "Nascimento por anúncio": { es: "Nacimiento por anuncio" },
+  "Entrada na etapa": { es: "Entrada en la etapa" },
+  "Leads de anúncio Click-to-WhatsApp elegíveis já informam o nascimento. Esta regra informa separadamente a entrada nesta etapa.": { es: "Los leads elegibles de anuncios Click-to-WhatsApp ya informan el nacimiento. Esta regla informa por separado la entrada en esta etapa." },
   // ─── EMPRESAS, PESSOAS E IMPORTAÇÃO (metade B2B do #1621, de @renatofortal) ───
   "Arquivo": {"es": "Archivo"},
   "Atualizado": {"es": "Actualizado"},
@@ -352,7 +356,7 @@ export const DICIONARIO: Traducoes = {
   "A plataforma recebeu o envio. A confirmação será consultada automaticamente.": { es: "La plataforma recibió el envío. La confirmación se consultará automáticamente." },
   "A plataforma não concluiu em 24 horas. Consulte o gerenciador e use o botão para verificar novamente.": { es: "La plataforma no terminó en 24 horas. Consulta el administrador y usa el botón para verificar de nuevo." },
   "Falha temporária. Uma nova tentativa foi agendada automaticamente.": { es: "Fallo temporal. Se programó automáticamente un nuevo intento." },
-  "Evento recebido em modo de teste. Desative o teste antes de reportar a venda real.": { es: "Evento recibido en modo de prueba. Desactiva la prueba antes de reportar la venta real." },
+  "Evento recebido em modo de teste. Desative o teste antes de reportar conversões reais.": { es: "Evento recibido en modo de prueba. Desactiva la prueba antes de reportar conversiones reales." },
   "A venda fechou sem valor preenchido. A plataforma exige valor e moeda em uma compra — preencha o valor do negócio e use o botão de reprocessamento.": { es: "La venta se cerró sin importe. La plataforma exige importe y moneda en una compra: completa el valor del negocio y usa el botón para reprocesar." },
 
   // Conversões de anúncios: recebimento, diagnóstico e recuperação.

@@ -170,6 +170,41 @@
       "col": 5,
       "type": "component",
       "label": "meta_ads_conversion_rules"
+    },
+    {
+      "id": "msg-ctwa",
+      "lane": "dados",
+      "col": 0,
+      "type": "component",
+      "label": "Mensagem inbound: meta_ctwa_message_v1"
+    },
+    {
+      "id": "nascimento-ctwa",
+      "lane": "motor",
+      "col": 1,
+      "type": "component",
+      "label": "RPC de nascimento por mensagem"
+    },
+    {
+      "id": "prova-lead",
+      "lane": "dados",
+      "col": 2,
+      "type": "component",
+      "label": "Lead: meta_capi_lead_birth_v1"
+    },
+    {
+      "id": "handler-nascimento",
+      "lane": "motor",
+      "col": 3,
+      "type": "component",
+      "label": "conversoes.nascimento_meta"
+    },
+    {
+      "id": "claim-nascimento",
+      "lane": "motor",
+      "col": 4,
+      "type": "component",
+      "label": "Claim/lease LeadSubmitted"
     }
   ],
   "edges": [
@@ -358,6 +393,48 @@
       "from": "tela",
       "to": "regras-meta",
       "label": "O que cada etapa informa à Meta"
+    },
+    {
+      "id": "feature-a-1",
+      "from": "msg-ctwa",
+      "to": "nascimento-ctwa",
+      "label": "message_id e escopo"
+    },
+    {
+      "id": "feature-a-2",
+      "from": "nascimento-ctwa",
+      "to": "prova-lead",
+      "label": "prova no novo lead e lead.created atomico"
+    },
+    {
+      "id": "feature-a-3",
+      "from": "prova-lead",
+      "to": "handler-nascimento",
+      "label": "somente prova causal"
+    },
+    {
+      "id": "feature-a-4",
+      "from": "eventos",
+      "to": "handler-nascimento",
+      "label": "lead.created"
+    },
+    {
+      "id": "feature-a-5",
+      "from": "handler-nascimento",
+      "to": "claim-nascimento",
+      "label": "owner unico e event_id estavel"
+    },
+    {
+      "id": "feature-a-6",
+      "from": "claim-nascimento",
+      "to": "registro",
+      "label": "lease e settlement"
+    },
+    {
+      "id": "feature-a-7",
+      "from": "handler-nascimento",
+      "to": "transporte",
+      "label": "LeadSubmitted sem valor"
     }
   ]
 }

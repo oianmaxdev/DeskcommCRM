@@ -55,6 +55,7 @@ export type PlataformaDeAnuncio = "meta_ads" | "google_ads";
  */
 export type NomeDoEvento =
   | "Purchase"
+  | "LeadSubmitted"
   | "QualifiedLead"
   | `Etapa:${string}`
   | `MetaEtapa:${string}`;

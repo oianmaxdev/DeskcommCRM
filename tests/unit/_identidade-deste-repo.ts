@@ -41,12 +41,12 @@
  * ⚠️ Ele é o que decide "esta corrida é de um fork?". Um PR consegue editar este
  * literal — e foi o que o #1130 fez. O que impede a edição de ligar a deferência
  * sozinha é a URL do repositório em `install.sh`, `comecar.sh`, `_common.sh` e
- * nos 3 Dockerfiles ser DERIVADA deste valor em
+ * nos 4 Dockerfiles ser DERIVADA deste valor em
  * `namespace-das-imagens.test.ts`: trocar só isto deixa a URL divergente e
  * reprova lá. Não remova essa derivação pensando que é redundante — ela é o que
  * torna a âncora não-falsificável de dentro do diff.
  */
-export const NAMESPACE_DESTE_REPO = "ghcr.io/melgarafael";
+export const NAMESPACE_DESTE_REPO = "ghcr.io/oianmaxdev";
 
 /**
  * O dono de uma referência `<registry>/<dono>`.

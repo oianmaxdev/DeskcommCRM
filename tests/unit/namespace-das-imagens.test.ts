@@ -125,11 +125,11 @@ const ENV_EXEMPLO = fs.readFileSync(path.join(RAIZ, ".env.hostgator.example"), "
  */
 const RECADO_AO_FORK =
   "Publicando as próprias imagens? Troque o namespace em três lugares, e só neles: " +
-  "IMG_NS em hostgator-setup-kit/_common.sh, o default das três linhas `image:` de " +
-  "docker-compose.prod.yml, e as três *_IMAGE de .env.hostgator.example. Depois " +
+  "IMG_NS em hostgator-setup-kit/_common.sh, o default das quatro linhas `image:` de " +
+  "docker-compose.prod.yml, e as quatro *_IMAGE de .env.hostgator.example. Depois " +
   "atualize NAMESPACE_DESTE_REPO neste arquivo, e a URL do repositório em " +
-  "install.sh, comecar.sh, _common.sh e nos três Dockerfiles (os casos abaixo " +
-  "prendem os seis). Todo o resto deriva de IMG_NS. Se você está lendo isto no CI " +
+  "install.sh, comecar.sh, _common.sh e nos quatro Dockerfiles (os casos abaixo " +
+  "prendem essas referências). Todo o resto deriva de IMG_NS. Se você está lendo isto no CI " +
   "do seu próprio fork, houve engano nosso: lá este caso não cobra nada.";
 
 /*
@@ -157,7 +157,7 @@ function imgNs(): string {
   return m[1];
 }
 
-/** Os três repositórios de imagem, na ordem em que `_common.sh` os declara. */
+/** Os quatro repositórios de imagem, na ordem em que `_common.sh` os declara. */
 function reposDoKit(): string[] {
   return ["IMG_APP", "IMG_WORKER", "IMG_SCHEDULER", "IMG_VOICE_AGENT"].map((chave) => {
     const m = COMUM.match(new RegExp(`^${chave}="\\$\\{IMG_NS\\}/([^"]+)"$`, "m"));
@@ -199,7 +199,7 @@ describe("o default do compose diz o mesmo que o kit", () => {
   // vale quando `APP_IMAGE` não está no `.env`. YAML não deriva de shell, então
   // as duas só andam juntas se alguém as comparar — é este caso.
   // Os nomes vêm de `reposDoKit()`, não de literais aqui: assim o compose e o
-  // `.env` de exemplo são conferidos contra IMG_APP/IMG_WORKER/IMG_SCHEDULER, e
+  // `.env` de exemplo são conferidos contra os quatro IMG_*, e
   // renomear uma imagem só no `_common.sh` fica vermelho. Com os nomes fixos
   // neste arquivo, essa renomeação passaria — o teste concordaria com o compose
   // sobre um nome que o kit já não usa.
@@ -207,7 +207,7 @@ describe("o default do compose diz o mesmo que o kit", () => {
   // A leitura acontece DENTRO de cada `it`, não no corpo do describe: lá, um
   // `_common.sh` fora de forma derrubava a coleta do arquivo inteiro, e o que
   // chegava ao resumo era "no tests" em vez do caso que reprovou.
-  const CHAVES = ["APP_IMAGE", "WORKER_IMAGE", "SCHEDULER_IMAGE"] as const;
+  const CHAVES = ["APP_IMAGE", "WORKER_IMAGE", "SCHEDULER_IMAGE", "VOICE_AGENT_IMAGE"] as const;
 
   CHAVES.forEach((chave, i) => {
     it(`o default de ${chave} usa o namespace de IMG_NS`, () => {
@@ -243,7 +243,12 @@ describe("o kit aponta para o que o CI realmente publica", () => {
       expect(texto).toContain(`REPO_URL="\${REPO_URL:-${repo}.git}"`);
     }
     expect(COMUM).toContain(`local url="\${1:-${repo}.git}" ref`);
-    for (const dockerfile of ["Dockerfile", "Dockerfile.worker", "Dockerfile.scheduler"]) {
+    for (const dockerfile of [
+      "Dockerfile",
+      "Dockerfile.worker",
+      "Dockerfile.scheduler",
+      "Dockerfile.voice-agent",
+    ]) {
       expect(fs.readFileSync(path.join(RAIZ, dockerfile), "utf8")).toContain(
         `org.opencontainers.image.source="${repo}"`,
       );

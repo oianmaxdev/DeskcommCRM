@@ -58,6 +58,8 @@ const db = createClient<Database>(url, serviceRole, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+let ativacaoAlterada = false;
+
 interface Creds {
   org_id: string;
   nascimento?: { pipeline_default_id: string };
@@ -481,13 +483,50 @@ test.describe("LeadSubmitted causal pelo webhook WAHA", () => {
     if (connectionError || !connection)
       throw new Error(`conexão Graph E2E: ${connectionError?.message ?? "vazia"}`);
     conexaoId = connection.id;
+
+    const { data: org, error: orgError } = await db
+      .from("organizations")
+      .select("meta_lead_birth_enabled_at")
+      .eq("id", creds.org_id)
+      .single();
+    if (orgError || !org)
+      throw new Error(`configuração da organização E2E: ${orgError?.message ?? "vazia"}`);
+    if (
+      (org as unknown as { meta_lead_birth_enabled_at: string | null })
+        .meta_lead_birth_enabled_at !== null
+    )
+      throw new Error(
+        "Organização E2E já tem LeadSubmitted causal ativo; use banco descartável limpo",
+      );
+    const { error: ativacaoError } = await db.rpc(
+      "fn_definir_meta_lead_birth" as never,
+      {
+        p_org: creds.org_id,
+        p_enabled: true,
+      } as never,
+    );
+    if (ativacaoError) throw new Error(`ativação causal E2E: ${ativacaoError.message}`);
+    ativacaoAlterada = true;
   });
 
   test.afterAll(async () => {
     try {
       await limparFixtures();
     } finally {
-      await fecharReceptor();
+      try {
+        if (ativacaoAlterada) {
+          const { error } = await db.rpc(
+            "fn_definir_meta_lead_birth" as never,
+            {
+              p_org: creds.org_id,
+              p_enabled: false,
+            } as never,
+          );
+          if (error) throw new Error(`desativação causal E2E: ${error.message}`);
+        }
+      } finally {
+        await fecharReceptor();
+      }
     }
   });
 

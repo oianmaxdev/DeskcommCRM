@@ -205,6 +205,13 @@
       "col": 4,
       "type": "component",
       "label": "Claim/lease LeadSubmitted"
+    },
+    {
+      "id": "ativacao-nascimento",
+      "lane": "dados",
+      "col": 3,
+      "type": "component",
+      "label": "organizations.meta_lead_birth_enabled_at"
     }
   ],
   "edges": [
@@ -435,6 +442,18 @@
       "from": "handler-nascimento",
       "to": "transporte",
       "label": "LeadSubmitted sem valor"
+    },
+    {
+      "id": "feature-a-ativacao-tela",
+      "from": "tela",
+      "to": "ativacao-nascimento",
+      "label": "admin liga/desliga com auditoria e corte do banco"
+    },
+    {
+      "id": "feature-a-ativacao-handler",
+      "from": "ativacao-nascimento",
+      "to": "handler-nascimento",
+      "label": "permite so nascimento posterior; relê antes do POST"
     }
   ]
 }

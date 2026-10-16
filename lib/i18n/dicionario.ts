@@ -37,6 +37,9 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  "Enviar nascimento de leads de anúncio à Meta": { es: "Enviar a Meta el nacimiento de leads de anuncios" },
+  "Desligado por padrão. Ao ligar, apenas leads novos vindos de um clique em anúncio Click-to-WhatsApp poderão gerar LeadSubmitted. Desligar não pausa compras nem eventos de etapa.": { es: "Desactivado por defecto. Al activarlo, solo los leads nuevos procedentes de un clic en un anuncio Click-to-WhatsApp podrán generar LeadSubmitted. Desactivarlo no pausa las compras ni los eventos de etapa." },
+  "Não foi possível ler a ativação do nascimento de leads. Atualize a página para tentar novamente.": { es: "No se pudo leer la activación del nacimiento de leads. Actualiza la página e inténtalo de nuevo." },
   // Conversão causal de nascimento CTWA e fato distinto de entrada na etapa.
   "Nascimento por anúncio": { es: "Nacimiento por anuncio" },
   "Entrada na etapa": { es: "Entrada en la etapa" },

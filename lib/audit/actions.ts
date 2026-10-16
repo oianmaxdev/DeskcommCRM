@@ -1014,6 +1014,7 @@ export const AUDIT_ACTIONS = [
   // A identidade da Página/WABA que a Meta exige no Purchase de clique-para-WhatsApp
   // (#2098): gravada pela tela de Conversões, em `organizations.settings.conversions`.
   "conversions.meta_identity_updated",
+  "conversions.meta_lead_birth_updated",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

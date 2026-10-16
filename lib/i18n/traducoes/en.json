@@ -1,4 +1,7 @@
 {
+  "Enviar nascimento de leads de anúncio à Meta": "Send ad lead births to Meta",
+  "Desligado por padrão. Ao ligar, apenas leads novos vindos de um clique em anúncio Click-to-WhatsApp poderão gerar LeadSubmitted. Desligar não pausa compras nem eventos de etapa.": "Off by default. When enabled, only new leads from a Click-to-WhatsApp ad click can generate LeadSubmitted. Turning this off does not pause purchases or stage events.",
+  "Não foi possível ler a ativação do nascimento de leads. Atualize a página para tentar novamente.": "Could not read the lead birth setting. Refresh the page and try again.",
   "Nascimento por anúncio": "Birth from ad",
   "Entrada na etapa": "Entry into stage",
   "Leads de anúncio Click-to-WhatsApp elegíveis já informam o nascimento. Esta regra informa separadamente a entrada nesta etapa.": "Eligible Click-to-WhatsApp ad leads already report their birth. This rule separately reports entry into this stage.",

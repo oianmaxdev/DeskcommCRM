@@ -1,5 +1,6 @@
 /** Conversão do nascimento causado pela mensagem CTWA atual. */
 import type { EventHandler, EventRow, HandlerResult } from "@/lib/event-log/dispatcher";
+import { ativacaoLeadMeta, leadNasceuAposAtivacao } from "@/lib/conversoes/ativacao-lead-meta";
 import { lerProvaMetaLeadSubmitted } from "@/lib/leads/prova-meta-lead-submitted";
 import { lerCredencial } from "@/lib/plataformas-de-anuncio/credenciais";
 import { transporteDe } from "@/lib/plataformas-de-anuncio/registry";
@@ -7,6 +8,25 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const KEY = "conversoes.nascimento_meta";
 const ESPERA_MS = 5 * 60 * 1000;
+
+async function conferirAtivacao(
+  admin: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  nasceuEm: string,
+): Promise<"liberado" | "desativado" | "anterior" | "indisponivel"> {
+  const { data, error } = await admin
+    .from("organizations")
+    .select("meta_lead_birth_enabled_at")
+    .eq("id", orgId)
+    .maybeSingle();
+  // Falha de leitura é transitória: o dispatcher deve tentar de novo.
+  if (error) return "indisponivel";
+  const linha = data as unknown as { meta_lead_birth_enabled_at?: unknown } | null;
+  if (!linha || ativacaoLeadMeta(linha.meta_lead_birth_enabled_at) === null) return "desativado";
+  return leadNasceuAposAtivacao(linha.meta_lead_birth_enabled_at, nasceuEm)
+    ? "liberado"
+    : "anterior";
+}
 
 function resultado(status: HandlerResult["status"], detail?: string): HandlerResult {
   return { consumer_key: KEY, status, detail };
@@ -44,6 +64,11 @@ async function handle(row: EventRow): Promise<HandlerResult> {
     const prova = lerProvaMetaLeadSubmitted(lead.source_metadata);
     if (!prova) return resultado("skipped", "sem_prova_causal");
     if (!lead.contact_id) return resultado("skipped", "sem_contato");
+
+    const ativacao = await conferirAtivacao(admin, row.organization_id, lead.created_at);
+    if (ativacao === "indisponivel") return retry("leitura_da_ativacao");
+    if (ativacao === "desativado") return resultado("skipped", "lead_submitted_desativado");
+    if (ativacao === "anterior") return resultado("skipped", "anterior_ativacao");
 
     const { data: mensagem, error: messageError } = await admin
       .from("messages")
@@ -119,6 +144,20 @@ async function handle(row: EventRow): Promise<HandlerResult> {
     }
     const transporte = transporteDe("meta_ads");
     if (!transporte) return await concluir("skipped", "plataforma_sem_transporte", null);
+
+    // Uma desativação pode ocorrer enquanto mensagem, claim e credencial são lidos.
+    // Uma chamada HTTP que já começou pode terminar; nenhuma nova começa após esta checagem.
+    const aindaAtiva = await conferirAtivacao(admin, row.organization_id, lead.created_at);
+    if (aindaAtiva === "indisponivel") {
+      const settled = await concluir("skipped", "nova_tentativa_agendada", "leitura_da_ativacao");
+      return settled.status === "skipped" ? retry("leitura_da_ativacao") : settled;
+    }
+    if (aindaAtiva !== "liberado")
+      return await concluir(
+        "skipped",
+        aindaAtiva === "anterior" ? "anterior_ativacao" : "lead_submitted_desativado",
+        null,
+      );
 
     const envio = await transporte.enviar(credencial.credencial, {
       organizationId: row.organization_id,

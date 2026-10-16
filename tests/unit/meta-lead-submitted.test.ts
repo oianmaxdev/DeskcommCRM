@@ -18,6 +18,7 @@ const MESSAGE = "44444444-4444-4444-8444-444444444444";
 const CONVERSATION = "55555555-5555-4555-8555-555555555555";
 const BIRTH = "2026-10-04T01:00:00.000Z";
 const AGORA = "2026-10-04T01:01:00.000Z";
+const ATIVACAO = "2026-10-03T01:00:00.000Z";
 
 const proof = {
   platform: "meta_ads",
@@ -42,7 +43,10 @@ const row = (extra: Partial<EventRow> = {}): EventRow => ({
   ...extra,
 });
 
-function admin(sourceMetadata: Record<string, unknown>) {
+function admin(
+  sourceMetadata: Record<string, unknown>,
+  options: { ativacoes?: Array<string | null>; erroNaLeitura?: number } = {},
+) {
   const rpc = vi.fn(async (name: string): Promise<{ data: unknown; error: null }> => {
     if (name === "fn_claim_meta_lead_submitted")
       return {
@@ -56,36 +60,56 @@ function admin(sourceMetadata: Record<string, unknown>) {
     return { data: true, error: null };
   });
   const filters: Array<[string, string, unknown]> = [];
+  let leituraDaOrg = 0;
   const from = vi.fn((table: string) => {
+    let orgConsultada: unknown;
     const query = {
       select: () => query,
       eq: (column: string, value: unknown) => {
         filters.push([table, column, value]);
+        if (table === "organizations" && column === "id") orgConsultada = value;
         return query;
       },
-      maybeSingle: async () => ({
-        data:
-          table === "crm_leads"
-            ? { id: LEAD, contact_id: CONTACT, created_at: BIRTH, source_metadata: sourceMetadata }
-            : table === "contacts"
-              ? { phone_number: "+5511988887777" }
-              : table === "messages"
-                ? {
-                    direction: "inbound",
-                    contact_id: CONTACT,
-                    conversation_id: CONVERSATION,
-                    created_at: BIRTH,
-                    metadata: {
-                      meta_ctwa_message_v1: {
-                        platform: "meta_ads",
-                        source_type: "ad",
-                        ctwa_clid: proof.ctwa_clid,
-                      },
-                    },
-                  }
-                : null,
-        error: null,
-      }),
+      maybeSingle: async () =>
+        table === "organizations"
+          ? (() => {
+              leituraDaOrg++;
+              if (options.erroNaLeitura === leituraDaOrg)
+                return { data: null, error: { message: "falha sintética" } };
+              if (orgConsultada !== ORG) return { data: null, error: null };
+              const ativadaEm =
+                options.ativacoes?.[Math.min(leituraDaOrg - 1, options.ativacoes.length - 1)] ??
+                (options.ativacoes ? null : ATIVACAO);
+              return { data: { meta_lead_birth_enabled_at: ativadaEm }, error: null };
+            })()
+          : {
+              data:
+                table === "crm_leads"
+                  ? {
+                      id: LEAD,
+                      contact_id: CONTACT,
+                      created_at: BIRTH,
+                      source_metadata: sourceMetadata,
+                    }
+                  : table === "contacts"
+                    ? { phone_number: "+5511988887777" }
+                    : table === "messages"
+                      ? {
+                          direction: "inbound",
+                          contact_id: CONTACT,
+                          conversation_id: CONVERSATION,
+                          created_at: BIRTH,
+                          metadata: {
+                            meta_ctwa_message_v1: {
+                              platform: "meta_ads",
+                              source_type: "ad",
+                              ctwa_clid: proof.ctwa_clid,
+                            },
+                          },
+                        }
+                      : null,
+              error: null,
+            },
     };
     return query;
   });
@@ -112,6 +136,100 @@ afterEach(() => {
 });
 
 describe("LeadSubmitted do nascimento causal", () => {
+  it("organização sem ativação não cria claim nem POST", async () => {
+    const db = admin({ meta_capi_lead_birth_v1: proof }, { ativacoes: [null] });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(await conversaoDeNascimentoMetaHandler.handle(row())).toMatchObject({
+      status: "skipped",
+      detail: "lead_submitted_desativado",
+    });
+    expect(db.rpc).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("ativação vale apenas para leads posteriores e não traz antigos de volta", async () => {
+    const db = admin({ meta_capi_lead_birth_v1: proof }, { ativacoes: ["2026-10-04T02:00:00Z"] });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(await conversaoDeNascimentoMetaHandler.handle(row())).toMatchObject({
+      status: "skipped",
+      detail: "anterior_ativacao",
+    });
+    expect(db.rpc).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("desativação após claim bloqueia o POST e assenta o ledger", async () => {
+    const db = admin({ meta_capi_lead_birth_v1: proof }, { ativacoes: [ATIVACAO, null] });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(await conversaoDeNascimentoMetaHandler.handle(row())).toMatchObject({
+      status: "skipped",
+      detail: "lead_submitted_desativado",
+    });
+    expect(db.rpc).toHaveBeenCalledWith("fn_claim_meta_lead_submitted", expect.anything());
+    expect(db.rpc).toHaveBeenCalledWith(
+      "fn_settle_meta_lead_submitted",
+      expect.objectContaining({ p_status: "skipped", p_reason: "lead_submitted_desativado" }),
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reativação não recupera lead nascido antes do novo corte", async () => {
+    const db = admin({ meta_capi_lead_birth_v1: proof }, { ativacoes: ["2026-10-04T01:00:30Z"] });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(
+      await conversaoDeNascimentoMetaHandler.handle(
+        row({
+          event_type: "ad_conversion.retry_requested",
+          payload: { event_name: "LeadSubmitted" },
+        }),
+      ),
+    ).toMatchObject({
+      status: "skipped",
+      detail: "anterior_ativacao",
+    });
+    expect(db.rpc).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("erro de leitura da configuração agenda retry, sem tratar como desativação", async () => {
+    const db = admin({ meta_capi_lead_birth_v1: proof }, { erroNaLeitura: 1 });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(await conversaoDeNascimentoMetaHandler.handle(row())).toMatchObject({
+      status: "retry",
+      detail: "leitura_da_ativacao",
+    });
+    expect(db.rpc).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("falha de leitura depois do claim libera lease e agenda retry", async () => {
+    const db = admin({ meta_capi_lead_birth_v1: proof }, { erroNaLeitura: 2 });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(await conversaoDeNascimentoMetaHandler.handle(row())).toMatchObject({
+      status: "retry",
+      detail: "leitura_da_ativacao",
+    });
+    expect(db.rpc).toHaveBeenCalledWith(
+      "fn_settle_meta_lead_submitted",
+      expect.objectContaining({ p_status: "skipped", p_reason: "nova_tentativa_agendada" }),
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("não usa ativação de outra organização", async () => {
+    const db = admin({ meta_capi_lead_birth_v1: proof });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const outraOrg = "77777777-7777-4777-8777-777777777777";
+    expect(
+      await conversaoDeNascimentoMetaHandler.handle(row({ organization_id: outraOrg })),
+    ).toMatchObject({
+      status: "skipped",
+      detail: "lead_submitted_desativado",
+    });
+    expect(db.filters).toContainEqual(["organizations", "id", outraOrg]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("usa o clique do lead, a data de nascimento e nenhum valor financeiro", async () => {
     const db = admin({ meta_capi_lead_birth_v1: proof });
     const fetchSpy = vi

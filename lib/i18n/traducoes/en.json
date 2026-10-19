@@ -1,6 +1,6 @@
 {
   "Enviar LeadSubmitted por clique CTWA à Meta": "Send LeadSubmitted to Meta for each CTWA click",
-  "Desligado por padrão. Ao ligar, cada novo clique em anúncio Click-to-WhatsApp recebido poderá gerar LeadSubmitted, mesmo quando o contato já tiver um negócio. Desligar não pausa compras nem eventos de etapa.": "Off by default. Once enabled, each new Click-to-WhatsApp ad click received can generate LeadSubmitted, even when the contact already has a deal. Turning it off does not pause purchases or stage events.",
+  "Quando alguém clicar em um anúncio Click-to-WhatsApp e efetivamente enviar uma mensagem, o sistema poderá registrar um LeadSubmitted na Meta. Apenas abrir a conversa não gera conversão.": "When someone clicks a Click-to-WhatsApp ad and actually sends a message, the system may record a LeadSubmitted with Meta. Simply opening the conversation does not generate a conversion.",
   "Não foi possível ler a ativação de LeadSubmitted. Atualize a página para tentar novamente.": "Could not read the LeadSubmitted setting. Refresh the page and try again.",
   "LeadSubmitted por clique CTWA": "LeadSubmitted per CTWA click",
   "Últimos 20 cliques recebidos. O mesmo contato pode aparecer mais de uma vez sem criar outro negócio.": "Latest 20 clicks received. The same contact can appear more than once without creating another deal.",

@@ -23,6 +23,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("chave causal na tela de Conversões", () => {
+  it("explica que o envio depende da mensagem em português e espanhol, sem marca fixa", () => {
+    const tela = render(<LeadSubmittedCausal ligado={false} idioma="pt-BR" />);
+    expect(
+      screen.getByText(
+        "Quando alguém clicar em um anúncio Click-to-WhatsApp e efetivamente enviar uma mensagem, o sistema poderá registrar um LeadSubmitted na Meta. Apenas abrir a conversa não gera conversão.",
+      ),
+    ).toBeTruthy();
+
+    tela.rerender(<LeadSubmittedCausal ligado={false} idioma="es" />);
+    expect(
+      screen.getByText(
+        "Cuando alguien haga clic en un anuncio Click-to-WhatsApp y llegue a enviar un mensaje, el sistema podrá registrar un LeadSubmitted en Meta. Solo abrir la conversación no genera una conversión.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("começa desligada e envia a decisão do administrador", async () => {
     render(<LeadSubmittedCausal ligado={false} idioma="pt-BR" />);
     const chave = screen.getByRole("switch", {

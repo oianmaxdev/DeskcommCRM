@@ -47,7 +47,7 @@ export function LeadSubmittedCausal({ ligado, idioma }: { ligado: boolean; idiom
           </Label>
           <p className="max-w-2xl text-xs text-muted-foreground">
             {t(
-              "Quando alguém clicar em um anúncio Click-to-WhatsApp e efetivamente enviar uma mensagem, o Deskcomm poderá registrar um LeadSubmitted na Meta. Apenas abrir a conversa não gera conversão.",
+              "Quando alguém clicar em um anúncio Click-to-WhatsApp e efetivamente enviar uma mensagem, o sistema poderá registrar um LeadSubmitted na Meta. Apenas abrir a conversa não gera conversão.",
             )}
           </p>
         </div>

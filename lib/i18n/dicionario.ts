@@ -40,9 +40,9 @@ export const DICIONARIO: Traducoes = {
   "Enviar LeadSubmitted por clique CTWA à Meta": {
     es: "Enviar LeadSubmitted a Meta por clic CTWA",
   },
-  "Desligado por padrão. Ao ligar, cada novo clique em anúncio Click-to-WhatsApp recebido poderá gerar LeadSubmitted, mesmo quando o contato já tiver um negócio. Desligar não pausa compras nem eventos de etapa.":
+  "Quando alguém clicar em um anúncio Click-to-WhatsApp e efetivamente enviar uma mensagem, o sistema poderá registrar um LeadSubmitted na Meta. Apenas abrir a conversa não gera conversão.":
     {
-      es: "Desactivado por defecto. Al activarlo, cada nuevo clic recibido en un anuncio Click-to-WhatsApp puede generar LeadSubmitted, aunque el contacto ya tenga un negocio. Desactivarlo no pausa compras ni eventos de etapa.",
+      es: "Cuando alguien haga clic en un anuncio Click-to-WhatsApp y llegue a enviar un mensaje, el sistema podrá registrar un LeadSubmitted en Meta. Solo abrir la conversación no genera una conversión.",
     },
   "Não foi possível ler a ativação de LeadSubmitted. Atualize a página para tentar novamente.": {
     es: "No se pudo leer la activación de LeadSubmitted. Actualiza la página e inténtalo de nuevo.",

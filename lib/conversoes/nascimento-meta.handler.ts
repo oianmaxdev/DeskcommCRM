@@ -65,6 +65,19 @@ async function handle(row: EventRow): Promise<HandlerResult> {
     if (!prova) return resultado("skipped", "sem_prova_causal");
     if (!lead.contact_id) return resultado("skipped", "sem_contato");
 
+    // O livro por clique assume mensagens persistidas depois da migration.
+    // A consulta pela identidade (nao apenas pela mensagem) impede que o mesmo
+    // clid em outro contato reabra o caminho legado e duplique LeadSubmitted.
+    // Sem linha, preserva o lead.created/retry anterior a esta migration.
+    const { data: clickAtual, error: clickError } = await admin
+      .from("meta_ctwa_click_dispatches")
+      .select("id")
+      .eq("organization_id", row.organization_id)
+      .eq("ctwa_clid", prova.ctwa_clid)
+      .maybeSingle();
+    if (clickError) return retry("leitura_do_clique");
+    if (clickAtual) return resultado("skipped", "clique_assumido_pelo_novo_consumidor");
+
     const ativacao = await conferirAtivacao(admin, row.organization_id, lead.created_at);
     if (ativacao === "indisponivel") return retry("leitura_da_ativacao");
     if (ativacao === "desativado") return resultado("skipped", "lead_submitted_desativado");

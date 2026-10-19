@@ -37,6 +37,26 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  "Enviar LeadSubmitted por clique CTWA à Meta": {
+    es: "Enviar LeadSubmitted a Meta por clic CTWA",
+  },
+  "Desligado por padrão. Ao ligar, cada novo clique em anúncio Click-to-WhatsApp recebido poderá gerar LeadSubmitted, mesmo quando o contato já tiver um negócio. Desligar não pausa compras nem eventos de etapa.":
+    {
+      es: "Desactivado por defecto. Al activarlo, cada nuevo clic recibido en un anuncio Click-to-WhatsApp puede generar LeadSubmitted, aunque el contacto ya tenga un negocio. Desactivarlo no pausa compras ni eventos de etapa.",
+    },
+  "Não foi possível ler a ativação de LeadSubmitted. Atualize a página para tentar novamente.": {
+    es: "No se pudo leer la activación de LeadSubmitted. Actualiza la página e inténtalo de nuevo.",
+  },
+  "LeadSubmitted por clique CTWA": { es: "LeadSubmitted por clic CTWA" },
+  "Últimos 20 cliques recebidos. O mesmo contato pode aparecer mais de uma vez sem criar outro negócio.":
+    {
+      es: "Últimos 20 clics recibidos. El mismo contacto puede aparecer varias veces sin crear otro negocio.",
+    },
+  "Nenhum clique CTWA registrado.": { es: "No hay clics CTWA registrados." },
+  "Primeira mensagem": { es: "Primer mensaje" },
+  "Não consegui ler o histórico de cliques agora. Atualize a página em instantes.": {
+    es: "No pude leer el historial de clics. Actualiza la página en unos momentos.",
+  },
   "Enviar nascimento de leads de anúncio à Meta": { es: "Enviar a Meta el nacimiento de leads de anuncios" },
   "Desligado por padrão. Ao ligar, apenas leads novos vindos de um clique em anúncio Click-to-WhatsApp poderão gerar LeadSubmitted. Desligar não pausa compras nem eventos de etapa.": { es: "Desactivado por defecto. Al activarlo, solo los leads nuevos procedentes de un clic en un anuncio Click-to-WhatsApp podrán generar LeadSubmitted. Desactivarlo no pausa las compras ni los eventos de etapa." },
   "Não foi possível ler a ativação do nascimento de leads. Atualize a página para tentar novamente.": { es: "No se pudo leer la activación del nacimiento de leads. Actualiza la página e inténtalo de nuevo." },

@@ -1,4 +1,12 @@
 {
+  "Enviar LeadSubmitted por clique CTWA à Meta": "Send LeadSubmitted to Meta for each CTWA click",
+  "Desligado por padrão. Ao ligar, cada novo clique em anúncio Click-to-WhatsApp recebido poderá gerar LeadSubmitted, mesmo quando o contato já tiver um negócio. Desligar não pausa compras nem eventos de etapa.": "Off by default. Once enabled, each new Click-to-WhatsApp ad click received can generate LeadSubmitted, even when the contact already has a deal. Turning it off does not pause purchases or stage events.",
+  "Não foi possível ler a ativação de LeadSubmitted. Atualize a página para tentar novamente.": "Could not read the LeadSubmitted setting. Refresh the page and try again.",
+  "LeadSubmitted por clique CTWA": "LeadSubmitted per CTWA click",
+  "Últimos 20 cliques recebidos. O mesmo contato pode aparecer mais de uma vez sem criar outro negócio.": "Latest 20 clicks received. The same contact can appear more than once without creating another deal.",
+  "Nenhum clique CTWA registrado.": "No CTWA clicks recorded.",
+  "Primeira mensagem": "First message",
+  "Não consegui ler o histórico de cliques agora. Atualize a página em instantes.": "Could not read click history. Refresh the page in a moment.",
   "Enviar nascimento de leads de anúncio à Meta": "Send ad lead births to Meta",
   "Desligado por padrão. Ao ligar, apenas leads novos vindos de um clique em anúncio Click-to-WhatsApp poderão gerar LeadSubmitted. Desligar não pausa compras nem eventos de etapa.": "Off by default. When enabled, only new leads from a Click-to-WhatsApp ad click can generate LeadSubmitted. Turning this off does not pause purchases or stage events.",
   "Não foi possível ler a ativação do nascimento de leads. Atualize a página para tentar novamente.": "Could not read the lead birth setting. Refresh the page and try again.",

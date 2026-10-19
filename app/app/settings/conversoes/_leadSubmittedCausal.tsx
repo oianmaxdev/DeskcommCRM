@@ -43,11 +43,11 @@ export function LeadSubmittedCausal({ ligado, idioma }: { ligado: boolean; idiom
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <Label htmlFor="meta_lead_birth">
-            {t("Enviar nascimento de leads de anúncio à Meta")}
+            {t("Enviar LeadSubmitted por clique CTWA à Meta")}
           </Label>
           <p className="max-w-2xl text-xs text-muted-foreground">
             {t(
-              "Desligado por padrão. Ao ligar, apenas leads novos vindos de um clique em anúncio Click-to-WhatsApp poderão gerar LeadSubmitted. Desligar não pausa compras nem eventos de etapa.",
+              "Desligado por padrão. Ao ligar, cada novo clique em anúncio Click-to-WhatsApp recebido poderá gerar LeadSubmitted, mesmo quando o contato já tiver um negócio. Desligar não pausa compras nem eventos de etapa.",
             )}
           </p>
         </div>

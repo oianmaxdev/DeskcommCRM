@@ -1,6 +1,7 @@
 /**
- * Prova de fio a fio: WAHA assinado -> mensagem -> lead.created -> dreno ->
- * Graph local -> ledger. O receptor confirma somente o comportamento do CRM;
+ * Prova de fio a fio: WAHA assinado -> mensagem -> clique atomico ->
+ * message.received -> dreno -> Graph local -> ledger por clique.
+ * O receptor confirma somente o comportamento do CRM;
  * HTTP 200 sintético não é aceite nem atribuição pela Meta.
  *
  * Precondições do runner: baseline aplicado, seeds de credenciais e nascimento,
@@ -30,7 +31,7 @@ const BEARER_SINTETICO = `qa-token-${randomUUID()}`;
 const SEGREDO_WAHA = `qa-hmac-${randomUUID()}-${randomUUID()}`;
 const TOKEN_WEBHOOK = `qa-causal-${randomUUID()}`;
 const NOME_SESSAO = `qa-causal-${randomUUID()}`;
-const CONSUMIDOR = "conversoes.nascimento_meta";
+const CONSUMIDOR = "conversoes.clique_meta";
 
 // Executa antes do beforeAll e antes de qualquer webhook/evento da spec.
 if (process.env.META_ADS_GRAPH_BASE_URL !== GRAPH_BASE)
@@ -191,6 +192,37 @@ async function ledger(leadId: string, eventName = "LeadSubmitted") {
   return data ?? [];
 }
 
+interface CliqueRegistrado {
+  id: string;
+  contact_id: string;
+  first_message_id: string;
+  ctwa_clid: string;
+  captured_at: string;
+  status: string;
+  reason: string | null;
+  event_id: string;
+}
+
+async function cliquesDaMensagem(messageId: string): Promise<CliqueRegistrado[]> {
+  const { data, error } = await db
+    .from("meta_ctwa_click_dispatches" as never)
+    .select("id,contact_id,first_message_id,ctwa_clid,captured_at,status,reason,event_id")
+    .eq("organization_id", creds.org_id)
+    .eq("first_message_id", messageId);
+  if (error) throw new Error(`cliques ${messageId}: ${error.message}`);
+  return (data ?? []) as unknown as CliqueRegistrado[];
+}
+
+async function cliquesDoContato(contactId: string): Promise<CliqueRegistrado[]> {
+  const { data, error } = await db
+    .from("meta_ctwa_click_dispatches" as never)
+    .select("id,contact_id,first_message_id,ctwa_clid,captured_at,status,reason,event_id")
+    .eq("organization_id", creds.org_id)
+    .eq("contact_id", contactId);
+  if (error) throw new Error(`cliques do contato ${contactId}: ${error.message}`);
+  return (data ?? []) as unknown as CliqueRegistrado[];
+}
+
 async function eventos(leadId: string, eventType = "lead.created") {
   const { data, error } = await db
     .from("event_log")
@@ -256,24 +288,25 @@ async function nascer(
     .toBe(1);
   const [lead] = await leads(message!.contact_id);
   expect(lead).toBeDefined();
-  if (options.aguardarConsumo !== false) await aguardarConsumo(request, lead!.id);
+  if (options.aguardarConsumo !== false)
+    await aguardarConsumo(request, message!.id, "message.received");
   return { envelope, externalId, message: message!, lead: lead! };
 }
 
 async function aguardarTentativaTransitoria(
   request: APIRequestContext,
-  leadId: string,
+  messageId: string,
 ): Promise<void> {
   await expect
     .poll(
       async () => {
-        const row = (await ledger(leadId))[0];
+        const row = (await cliquesDaMensagem(messageId))[0];
         if (row?.status === "skipped" && row.reason === "nova_tentativa_agendada") return true;
         await drenar(request);
         return false;
       },
       {
-        message: `a primeira tentativa de ${leadId} não terminou com retry transitório`,
+        message: `a primeira tentativa de ${messageId} não terminou com retry transitório`,
         timeout: 30_000,
         intervals: [250, 500, 1_000],
       },
@@ -316,13 +349,28 @@ async function limparFixtures(): Promise<void> {
     : { data: [], error: null };
   if (leadError) throw leadError;
   const leadIds = (leadRows ?? []).map((l) => l.id);
+  const { data: clickRows, error: clickError } = contactIds.length
+    ? await db
+        .from("meta_ctwa_click_dispatches" as never)
+        .select("id")
+        .eq("organization_id", org)
+        .in("contact_id", contactIds)
+    : { data: [], error: null };
+  if (clickError) throw clickError;
+  const clickIds = (clickRows ?? []).map((c: { id: string }) => c.id);
   const { data: messageRows, error: msgError } = await db
     .from("messages")
     .select("id")
     .eq("organization_id", org)
     .eq("channel_session_id", sessaoId);
   if (msgError) throw msgError;
-  const eventIds = [...leadIds, ...contactIds, ...convIds, ...(messageRows ?? []).map((m) => m.id)];
+  const eventIds = [
+    ...leadIds,
+    ...clickIds,
+    ...contactIds,
+    ...convIds,
+    ...(messageRows ?? []).map((m) => m.id),
+  ];
   const changes = [
     () =>
       db
@@ -566,7 +614,9 @@ test.describe("LeadSubmitted causal pelo webhook WAHA", () => {
       ctwaClid: click,
       sourceId: adId,
     });
-    const eventId = `${lead.id}:LeadSubmitted`;
+    const [clique] = await cliquesDaMensagem(message.id);
+    expect(clique).toBeDefined();
+    const eventId = clique!.event_id;
     const proof = lead.source_metadata.meta_capi_lead_birth_v1 as Record<string, unknown>;
     expect(await mensagens(externalId)).toHaveLength(1);
     expect(proof).toMatchObject({
@@ -600,19 +650,19 @@ test.describe("LeadSubmitted causal pelo webhook WAHA", () => {
     expect(arquivos).toHaveLength(1);
     expect(arquivos?.[0]?.valid_signature).toBe(true);
     await expect
-      .poll(async () => (await ledger(lead.id))[0]?.status, {
-        message: `LeadSubmitted ${lead.id} não chegou a sent`,
+      .poll(async () => (await cliquesDaMensagem(message.id))[0]?.status, {
+        message: `LeadSubmitted ${eventId} não chegou a sent`,
         timeout: 20_000,
       })
       .toBe("sent");
-    const rows = await ledger(lead.id);
+    const rows = await cliquesDaMensagem(message.id);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       event_id: eventId,
-      platform: "meta_ads",
-      event_name: "LeadSubmitted",
+      ctwa_clid: click,
+      first_message_id: message.id,
     });
-    expect(Date.parse(rows[0]!.event_occurred_at!)).toBe(Date.parse(lead.created_at));
+    expect(Date.parse(rows[0]!.captured_at)).toBeGreaterThanOrEqual(Date.parse(message.created_at));
     expect(posts(eventId)).toHaveLength(1);
     const [post] = posts(eventId);
     expect(post).toMatchObject({
@@ -626,7 +676,7 @@ test.describe("LeadSubmitted causal pelo webhook WAHA", () => {
     expect(body.data[0]).toMatchObject({
       event_name: "LeadSubmitted",
       event_id: eventId,
-      event_time: Math.floor(Date.parse(lead.created_at) / 1000),
+      event_time: Math.floor(Date.parse(clique!.captured_at) / 1000),
       action_source: "business_messaging",
       messaging_channel: "whatsapp",
       user_data: expect.objectContaining({ ctwa_clid: click }),
@@ -641,42 +691,82 @@ test.describe("LeadSubmitted causal pelo webhook WAHA", () => {
     const { lead } = await nascer(request);
     expect(lead.source_metadata).not.toHaveProperty("meta_capi_lead_birth_v1");
     expect(await eventos(lead.id)).toHaveLength(1);
+    expect(await cliquesDoContato(lead.contact_id!)).toHaveLength(0);
     expect(await ledger(lead.id)).toHaveLength(0);
     expect(capturas).toHaveLength(before);
   });
 
-  test("lead preexistente não renasce após mensagem CTWA", async ({ request }) => {
-    const before = capturas.length;
-    const first = await nascer(request);
-    const secondId = `qa-causal-${randomUUID()}`;
+  test("cliques A, B e C do mesmo contato e lead aberto enviam tres eventos sem novo card", async ({
+    request,
+  }) => {
+    const first = await nascer(request, { sourceType: "ad", ctwaClid: `ctwa-${randomUUID()}` });
     const phone = first.envelope.payload.from.replace("@c.us", "");
-    const second = mensagemWaha(phone, secondId, {
-      sourceType: "ad",
-      ctwaClid: `ctwa-${randomUUID()}`,
-    });
-    expect(await enviarWebhook(request, second)).toBe(200);
-    expect(await mensagens(secondId)).toHaveLength(1);
-    await drenar(request);
+    const mensagensNovas: Mensagem[] = [];
+    for (const _ of [2, 3]) {
+      const externalId = `qa-causal-${randomUUID()}`;
+      const envelope = mensagemWaha(phone, externalId, {
+        sourceType: "ad",
+        ctwaClid: `ctwa-${randomUUID()}`,
+      });
+      expect(await enviarWebhook(request, envelope)).toBe(200);
+      await expect
+        .poll(async () => (await mensagens(externalId)).length, {
+          message: `mensagem ${externalId} não persistida`,
+          timeout: 20_000,
+        })
+        .toBe(1);
+      const [message] = await mensagens(externalId);
+      expect(message).toBeDefined();
+      mensagensNovas.push(message!);
+      await aguardarConsumo(request, message!.id, "message.received");
+    }
     expect(await leads(first.message.contact_id)).toHaveLength(1);
     expect(await eventos(first.lead.id)).toHaveLength(1);
     expect(await ledger(first.lead.id)).toHaveLength(0);
-    expect(capturas).toHaveLength(before);
+    const cliques = await cliquesDoContato(first.message.contact_id);
+    expect(cliques).toHaveLength(3);
+    expect(new Set(cliques.map((c) => c.event_id)).size).toBe(3);
+    expect(cliques.every((c) => c.status === "sent")).toBe(true);
+    expect(new Set(cliques.map((c) => c.first_message_id))).toEqual(
+      new Set([first.message.id, ...mensagensNovas.map((m) => m.id)]),
+    );
+    for (const c of cliques) expect(posts(c.event_id)).toHaveLength(1);
   });
 
   test("reentrega e drenagem repetida não duplicam mensagem nem POST", async ({ request }) => {
+    const click = `ctwa-${randomUUID()}`;
     const { envelope, externalId, message, lead } = await nascer(request, {
       sourceType: "ad",
-      ctwaClid: `ctwa-${randomUUID()}`,
+      ctwaClid: click,
     });
-    const eventId = `${lead.id}:LeadSubmitted`;
+    const [clique] = await cliquesDaMensagem(message.id);
+    expect(clique).toBeDefined();
+    const eventId = clique!.event_id;
     expect(posts(eventId)).toHaveLength(1);
     expect(await enviarWebhook(request, envelope)).toBe(200);
+    const secondExternalId = `qa-causal-${randomUUID()}`;
+    const sameClickAnotherMessage = mensagemWaha(
+      envelope.payload.from.replace("@c.us", ""),
+      secondExternalId,
+      { sourceType: "ad", ctwaClid: click },
+    );
+    expect(await enviarWebhook(request, sameClickAnotherMessage)).toBe(200);
+    await expect
+      .poll(async () => (await mensagens(secondExternalId)).length, {
+        message: `segunda mensagem do clique ${click} não persistida`,
+        timeout: 20_000,
+      })
+      .toBe(1);
+    const [secondMessage] = await mensagens(secondExternalId);
+    expect(secondMessage).toBeDefined();
+    await aguardarConsumo(request, secondMessage!.id, "message.received");
     await drenar(request);
     await drenar(request);
     expect(await mensagens(externalId)).toHaveLength(1);
+    expect(await mensagens(secondExternalId)).toHaveLength(1);
     expect(await leads(message.contact_id)).toHaveLength(1);
     expect(await eventos(lead.id)).toHaveLength(1);
-    expect(await ledger(lead.id)).toHaveLength(1);
+    expect(await cliquesDoContato(message.contact_id)).toHaveLength(1);
     expect(posts(eventId)).toHaveLength(1);
   });
 
@@ -685,25 +775,26 @@ test.describe("LeadSubmitted causal pelo webhook WAHA", () => {
     request,
   }) => {
     respostasPlanejadas.push(503);
-    const { lead } = await nascer(
+    const { lead, message } = await nascer(
       request,
       { sourceType: "ad", ctwaClid: `ctwa-${randomUUID()}` },
       undefined,
       { aguardarConsumo: false },
     );
-    await aguardarTentativaTransitoria(request, lead.id);
-    const eventId = `${lead.id}:LeadSubmitted`;
+    await aguardarTentativaTransitoria(request, message.id);
+    const [firstRow] = await cliquesDaMensagem(message.id);
+    expect(firstRow).toBeDefined();
+    const eventId = firstRow!.event_id;
     expect(posts(eventId)).toHaveLength(1);
     expect(posts(eventId)[0]?.status).toBe(503);
-    const [firstRow] = await ledger(lead.id);
     expect(firstRow).toMatchObject({
       status: "skipped",
       reason: "nova_tentativa_agendada",
       event_id: eventId,
     });
 
-    // Todos os consumidores recebem retry_requested; só LeadSubmitted deve
-    // alterar a própria linha. As sentinelas já existem ANTES do retry real.
+    // O retry por clique e independente dos consumidores por lead.
+    // As sentinelas ja existem ANTES do retry real.
     const outrosEventos = ["Purchase", "QualifiedLead", `MetaEtapa:${randomUUID()}`];
     for (const event_name of outrosEventos) {
       const { error } = await db.from("ad_conversion_dispatches").insert({
@@ -720,28 +811,26 @@ test.describe("LeadSubmitted causal pelo webhook WAHA", () => {
     const outrosAntes = await Promise.all(outrosEventos.map((name) => ledger(lead.id, name)));
 
     await loginComoAdmin(page, lerCreds());
-    const retry = await page.request.post(
-      `/api/v1/leads/${lead.id}/conversion/retry?event_name=LeadSubmitted`,
-    );
+    const retry = await page.request.post(`/api/v1/conversions/meta-clicks/${firstRow!.id}/retry`);
     expect(retry.status(), "retry exige admin autenticado e deve ser aceito").toBe(200);
     expect((await retry.json()).data?.queued).toBe(true);
-    await aguardarConsumo(request, lead.id, "ad_conversion.retry_requested");
+    await aguardarConsumo(request, firstRow!.id, "ad_conversion.click_retry_requested");
     await expect
-      .poll(async () => (await ledger(lead.id))[0]?.status, {
-        message: `LeadSubmitted ${lead.id} não chegou a sent após retry autorizado`,
+      .poll(async () => (await cliquesDaMensagem(message.id))[0]?.status, {
+        message: `LeadSubmitted ${eventId} não chegou a sent após retry autorizado`,
         timeout: 20_000,
       })
       .toBe("sent");
-    const [lastRow] = await ledger(lead.id);
+    const [lastRow] = await cliquesDaMensagem(message.id);
     expect(lastRow?.id).toBe(firstRow?.id);
     expect(lastRow?.event_id).toBe(eventId);
-    expect(await ledger(lead.id)).toHaveLength(1);
+    expect(await cliquesDaMensagem(message.id)).toHaveLength(1);
     expect(posts(eventId).map((p) => p.status)).toEqual([503, 200]);
     expect(await Promise.all(outrosEventos.map((name) => ledger(lead.id, name)))).toEqual(
       outrosAntes,
     );
     const repeatRetry = await page.request.post(
-      `/api/v1/leads/${lead.id}/conversion/retry?event_name=LeadSubmitted`,
+      `/api/v1/conversions/meta-clicks/${firstRow!.id}/retry`,
     );
     expect(repeatRetry.status()).toBe(200);
     expect((await repeatRetry.json()).data?.queued).toBe(false);
@@ -792,6 +881,7 @@ test.describe("LeadSubmitted causal pelo webhook WAHA", () => {
       const { message, lead } = await nascer(request, invalid.ad, invalid.extra);
       expect(message.metadata).not.toHaveProperty("meta_ctwa_message_v1");
       expect(lead.source_metadata).not.toHaveProperty("meta_capi_lead_birth_v1");
+      expect(await cliquesDaMensagem(message.id)).toHaveLength(0);
       expect(await ledger(lead.id)).toHaveLength(0);
       expect(capturas).toHaveLength(before);
     });
@@ -803,12 +893,14 @@ test.describe("LeadSubmitted causal pelo webhook WAHA", () => {
     // Não transforma esta observação em uma regra nova: o extrator só rejeita
     // sourceType explícito diferente de ad. Decisão de endurecer fica fora da spec.
     const click = `ctwa-${randomUUID()}`;
-    const { lead } = await nascer(request, { ctwaClid: click });
+    const { lead, message } = await nascer(request, { ctwaClid: click });
     expect(lead.source_metadata.meta_capi_lead_birth_v1).toMatchObject({
       ctwa_clid: click,
       source_type: "ad",
     });
-    expect(posts(`${lead.id}:LeadSubmitted`)).toHaveLength(1);
-    expect((await ledger(lead.id))[0]?.status).toBe("sent");
+    const [clique] = await cliquesDaMensagem(message.id);
+    expect(clique?.ctwa_clid).toBe(click);
+    expect(posts(clique!.event_id)).toHaveLength(1);
+    expect(clique?.status).toBe("sent");
   });
 });

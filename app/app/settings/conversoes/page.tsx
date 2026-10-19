@@ -60,6 +60,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 import { ReprocessarConversao } from "./_reprocessar";
 import { HistoricoDeEnvios } from "./_historico";
+import { HistoricoDeCliques } from "./_historicoCliques";
+import { lerHistoricoDeCliques } from "@/lib/conversoes/historico-de-cliques";
 import { DiagnosticoGoogle } from "./_diagnostico";
 import {
   lerDiagnosticoGoogle,
@@ -208,6 +210,10 @@ export default async function ConversoesPage({
     aba === "historico"
       ? await lerHistorico(admin, activeOrg.orgId, filtrosDoHistorico).catch(() => null)
       : null;
+  const historicoCliques =
+    aba === "historico"
+      ? await lerHistoricoDeCliques(admin, activeOrg.orgId).catch(() => null)
+      : null;
   const diagnostico =
     aba === "diagnostico"
       ? await lerDiagnosticoGoogle(admin, activeOrg.orgId, {
@@ -290,13 +296,24 @@ export default async function ConversoesPage({
         )
       ) : aba === "historico" ? (
         historico ? (
-          <HistoricoDeEnvios
-            linhas={historico.linhas}
-            total={historico.total}
-            filtros={filtrosDoHistorico}
-            regras={rotulosDeEtapa}
-            idioma={idioma}
-          />
+          <div className="flex flex-col gap-8">
+            <HistoricoDeEnvios
+              linhas={historico.linhas}
+              total={historico.total}
+              filtros={filtrosDoHistorico}
+              regras={rotulosDeEtapa}
+              idioma={idioma}
+            />
+            {historicoCliques ? (
+              <HistoricoDeCliques linhas={historicoCliques} idioma={idioma} />
+            ) : (
+              <p role="alert" className="rounded-md border p-4 text-sm">
+                {t(
+                  "Não consegui ler o histórico de cliques agora. Atualize a página em instantes.",
+                )}
+              </p>
+            )}
+          </div>
         ) : (
           <p className="rounded-md border p-4 text-sm">
             {t("Não consegui ler o histórico agora. Atualize a página em instantes.")}
@@ -346,7 +363,7 @@ export default async function ConversoesPage({
           {organizacao.error || !linhaDaOrganizacao ? (
             <p role="alert" className="rounded-md border border-destructive/40 p-4 text-sm">
               {t(
-                "Não foi possível ler a ativação do nascimento de leads. Atualize a página para tentar novamente.",
+                "Não foi possível ler a ativação de LeadSubmitted. Atualize a página para tentar novamente.",
               )}
             </p>
           ) : (

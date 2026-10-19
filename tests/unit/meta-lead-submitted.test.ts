@@ -45,7 +45,11 @@ const row = (extra: Partial<EventRow> = {}): EventRow => ({
 
 function admin(
   sourceMetadata: Record<string, unknown>,
-  options: { ativacoes?: Array<string | null>; erroNaLeitura?: number } = {},
+  options: {
+    ativacoes?: Array<string | null>;
+    erroNaLeitura?: number;
+    cliqueJaRegistrado?: boolean;
+  } = {},
 ) {
   const rpc = vi.fn(async (name: string): Promise<{ data: unknown; error: null }> => {
     if (name === "fn_claim_meta_lead_submitted")
@@ -84,30 +88,34 @@ function admin(
             })()
           : {
               data:
-                table === "crm_leads"
-                  ? {
-                      id: LEAD,
-                      contact_id: CONTACT,
-                      created_at: BIRTH,
-                      source_metadata: sourceMetadata,
-                    }
-                  : table === "contacts"
-                    ? { phone_number: "+5511988887777" }
-                    : table === "messages"
-                      ? {
-                          direction: "inbound",
-                          contact_id: CONTACT,
-                          conversation_id: CONVERSATION,
-                          created_at: BIRTH,
-                          metadata: {
-                            meta_ctwa_message_v1: {
-                              platform: "meta_ads",
-                              source_type: "ad",
-                              ctwa_clid: proof.ctwa_clid,
+                table === "meta_ctwa_click_dispatches"
+                  ? options.cliqueJaRegistrado
+                    ? { id: "clique-ja-registrado" }
+                    : null
+                  : table === "crm_leads"
+                    ? {
+                        id: LEAD,
+                        contact_id: CONTACT,
+                        created_at: BIRTH,
+                        source_metadata: sourceMetadata,
+                      }
+                    : table === "contacts"
+                      ? { phone_number: "+5511988887777" }
+                      : table === "messages"
+                        ? {
+                            direction: "inbound",
+                            contact_id: CONTACT,
+                            conversation_id: CONVERSATION,
+                            created_at: BIRTH,
+                            metadata: {
+                              meta_ctwa_message_v1: {
+                                platform: "meta_ads",
+                                source_type: "ad",
+                                ctwa_clid: proof.ctwa_clid,
+                              },
                             },
-                          },
-                        }
-                      : null,
+                          }
+                        : null,
               error: null,
             },
     };
@@ -136,6 +144,18 @@ afterEach(() => {
 });
 
 describe("LeadSubmitted do nascimento causal", () => {
+  it("nao reenvia o mesmo clique pelo consumidor legado de outro lead", async () => {
+    const db = admin({ meta_capi_lead_birth_v1: proof }, { cliqueJaRegistrado: true });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(await conversaoDeNascimentoMetaHandler.handle(row())).toMatchObject({
+      status: "skipped",
+      detail: "clique_assumido_pelo_novo_consumidor",
+    });
+    expect(db.filters).toContainEqual(["meta_ctwa_click_dispatches", "ctwa_clid", proof.ctwa_clid]);
+    expect(db.rpc).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("organização sem ativação não cria claim nem POST", async () => {
     const db = admin({ meta_capi_lead_birth_v1: proof }, { ativacoes: [null] });
     const fetchSpy = vi.spyOn(globalThis, "fetch");

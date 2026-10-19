@@ -26,7 +26,7 @@ describe("chave causal na tela de Conversões", () => {
   it("começa desligada e envia a decisão do administrador", async () => {
     render(<LeadSubmittedCausal ligado={false} idioma="pt-BR" />);
     const chave = screen.getByRole("switch", {
-      name: "Enviar nascimento de leads de anúncio à Meta",
+      name: "Enviar LeadSubmitted por clique CTWA à Meta",
     });
     expect(chave.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(chave);
@@ -39,7 +39,7 @@ describe("chave causal na tela de Conversões", () => {
     deps.definir.mockResolvedValue({ ok: false, error: "erro_ao_gravar" });
     render(<LeadSubmittedCausal ligado={false} idioma="pt-BR" />);
     const chave = screen.getByRole("switch", {
-      name: "Enviar nascimento de leads de anúncio à Meta",
+      name: "Enviar LeadSubmitted por clique CTWA à Meta",
     });
     fireEvent.click(chave);
     await waitFor(() => expect(deps.error).toHaveBeenCalledOnce());
@@ -50,13 +50,13 @@ describe("chave causal na tela de Conversões", () => {
   it("atualiza a chave quando a organização ativa muda", () => {
     const tela = render(<LeadSubmittedCausal key="org-a" ligado={true} idioma="pt-BR" />);
     const chave = screen.getByRole("switch", {
-      name: "Enviar nascimento de leads de anúncio à Meta",
+      name: "Enviar LeadSubmitted por clique CTWA à Meta",
     });
     expect(chave.getAttribute("aria-checked")).toBe("true");
     tela.rerender(<LeadSubmittedCausal key="org-b" ligado={false} idioma="pt-BR" />);
     expect(
       screen
-        .getByRole("switch", { name: "Enviar nascimento de leads de anúncio à Meta" })
+        .getByRole("switch", { name: "Enviar LeadSubmitted por clique CTWA à Meta" })
         .getAttribute("aria-checked"),
     ).toBe("false");
     expect(deps.definir).not.toHaveBeenCalled();

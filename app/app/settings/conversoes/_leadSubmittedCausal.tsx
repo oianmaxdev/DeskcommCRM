@@ -47,7 +47,7 @@ export function LeadSubmittedCausal({ ligado, idioma }: { ligado: boolean; idiom
           </Label>
           <p className="max-w-2xl text-xs text-muted-foreground">
             {t(
-              "Desligado por padrão. Ao ligar, cada novo clique em anúncio Click-to-WhatsApp recebido poderá gerar LeadSubmitted, mesmo quando o contato já tiver um negócio. Desligar não pausa compras nem eventos de etapa.",
+              "Quando alguém clicar em um anúncio Click-to-WhatsApp e efetivamente enviar uma mensagem, o Deskcomm poderá registrar um LeadSubmitted na Meta. Apenas abrir a conversa não gera conversão.",
             )}
           </p>
         </div>

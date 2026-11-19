@@ -22,6 +22,7 @@ import type { ActionResultDetail } from "@/lib/automation/types";
 import { audit } from "@/lib/audit";
 import { regraDoEvento } from "@/lib/automation/gatilho-de-data-do-funil";
 import { ENTIDADE_ESPERADA_POR_GATILHO } from "@/lib/schemas/webhooks";
+import { eventoPedeSemDisparo } from "@/lib/event-log/sem-disparo";
 import { logger } from "@/lib/logger";
 
 export const AUTOMATION_CONSUMER_KEY = "automation-rules";
@@ -161,6 +162,11 @@ export async function runAutomationForEvent(
     Boolean(row.metadata?.caused_by_rule) || (typeof requestId === "string" && requestId.startsWith("rule:"));
   if (causedByRule) {
     return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "skipped", detail: "caused_by_rule" };
+  }
+  // Movimento/tag feitos SOZINHOS pelo Supervisor Comercial: o fato fica no
+  // event_log, mas não vira mensagem por tabela (ver lib/event-log/sem-disparo.ts).
+  if (eventoPedeSemDisparo(row.metadata)) {
+    return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "skipped", detail: "sem_disparo_automatico" };
   }
 
   const expectedKind = EXPECTED_ENTITY_KIND[row.event_type];

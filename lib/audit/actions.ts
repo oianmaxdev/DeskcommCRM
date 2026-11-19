@@ -185,6 +185,8 @@ export const AUDIT_ACTIONS = [
   "ai.credential_created",
   "ai.credential_deleted",
   "ai.credential_revalidated",
+  "ai.login_codex_conectado",
+  "ai.login_codex_desconectado",
   "ai_agent.created",
   "ai_agent.updated",
   "ai_agent.archived",
@@ -783,6 +785,17 @@ export const AUDIT_ACTIONS = [
   "external_db_connection.deleted",
   "external_db_connection.tested",
   "external_db_connection.read",
+
+  // Supervisor Comercial por IA (migration 0381). `action_applied` é efeito
+  // AUTOMÁTICO no CRM (ator: o Supervisor, sem usuário); `action_approved` é o
+  // mesmo efeito com um gestor como ator. O metadata leva antes/depois e os ids
+  // das mensagens citadas — nunca o texto delas.
+  "supervisor.settings_updated",
+  "supervisor.action_applied",
+  "supervisor.action_approved",
+  "supervisor.action_rejected",
+  "supervisor.report_generated",
+  "supervisor.observe_requested",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

@@ -75,6 +75,10 @@ interface Excecao {
  * linhas da OUTRA organização, não uma leitura como superusuário.
  */
 const PROVA_PROPRIA: readonly Excecao[] = [
+  { tabela: "supervisor_settings", razao: "tests/invariants/supervisor-comercial-rls.test.ts — dois tenants reais por JWT: manager lê só a própria organização, agent e viewer leem zero, escrita direta por authenticated negada (prova por contagem) e anon sem privilégio. Fora de TABLES porque a policy exige manager e o usuário semeado lá é agent." },
+  { tabela: "supervisor_runs", razao: "tests/invariants/supervisor-comercial-rls.test.ts — dois tenants reais por JWT: manager lê só a própria organização, agent e viewer leem zero, escrita direta por authenticated negada (prova por contagem) e anon sem privilégio. Fora de TABLES porque a policy exige manager e o usuário semeado lá é agent." },
+  { tabela: "supervisor_actions", razao: "tests/invariants/supervisor-comercial-rls.test.ts — dois tenants reais por JWT: manager lê só a própria organização, agent e viewer leem zero, escrita direta por authenticated negada (prova por contagem) e anon sem privilégio. Fora de TABLES porque a policy exige manager e o usuário semeado lá é agent." },
+  { tabela: "supervisor_reports", razao: "tests/invariants/supervisor-comercial-rls.test.ts — dois tenants reais por JWT: manager lê só a própria organização, agent e viewer leem zero, escrita direta por authenticated negada (prova por contagem) e anon sem privilégio. Fora de TABLES porque a policy exige manager e o usuário semeado lá é agent." },
   { tabela: "prospecting_settings", razao: "tests/invariants/prospecting.test.ts — tabela exclusiva do servidor, ACL e RLS verificadas; FK composta e comandos autenticados cercam a organização." },
   { tabela: "prospecting_campaigns", razao: "tests/invariants/prospecting.test.ts — tabela exclusiva do servidor, ACL e RLS verificadas; FK composta e comandos autenticados cercam a organização." },
   { tabela: "prospecting_candidates", razao: "tests/invariants/prospecting.test.ts — tabela exclusiva do servidor, ACL e RLS verificadas; FK composta e comandos autenticados cercam a organização." },

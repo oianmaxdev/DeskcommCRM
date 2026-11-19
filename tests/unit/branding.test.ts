@@ -208,6 +208,12 @@ type EntradaDeMarca = {
 };
 
 const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
+  "lib/ai/pontos/pkce-da-assinatura.ts": {
+    categoria: "PROTOCOLO",
+    motivo:
+      "`agent_name_hint` identifica o aplicativo auto-hospedado durante a autorização SIWC da OpenAI; não é o nome apresentado nas telas do CRM. O fluxo de login depende deste identificador de produto. (Entrada idêntica à do upstream, #1639.)",
+    marcas: ["deskcommcrm"],
+  },
   // ─── PROTOCOLO — contrato de fio. Renomear quebra integração alheia. ───
   "app/api/v1/webhooks/in/[token]/route.ts": {
     categoria: "PROTOCOLO",
@@ -895,6 +901,11 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     categoria: "CONSOLE",
     motivo:
       "painel onde o usuário gera a PRÓPRIA chave da DeepSeek (`ondePegarAChave` em lib/ai/pontos/provedores.ts). Endereço do fornecedor, não nosso.",
+  },
+  "auth.openai.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint de autorização OAuth da OpenAI usado pelo login por PKCE da assinatura (`lib/ai/pontos/pkce-da-assinatura.ts`) e emissor conferido no id_token: é onde o fluxo troca o code pelo token e renova o acesso. Trocar pelo domínio do revendedor faria o login não chegar a lugar nenhum. (Entrada idêntica à do upstream, #1639.)",
   },
   "aistudio.google.com": {
     categoria: "CONSOLE",

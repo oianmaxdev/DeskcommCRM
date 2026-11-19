@@ -30,6 +30,8 @@ import {
 import { PAPEIS, PONTOS_DE_IA, PONTO_POR_ID } from "@/lib/ai/pontos/registro";
 import { PROVEDORES, ehProvedorSuportado } from "@/lib/ai/pontos/provedores";
 import { validarBinding } from "@/lib/ai/pontos/validar-binding";
+import { PROVEDOR_POR_ASSINATURA } from "@/lib/ai/credenciais/login-codex";
+import { PONTOS_DO_SUPERVISOR } from "@/lib/supervisor/escolha-de-modelo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -208,18 +210,26 @@ const corpoDoPut = z.object({
   // API é pública) gravava `provider: "foobar"`, a rota respondia 200, e todo
   // uso daquele ponto morria em produção com provedor desconhecido. Metade da
   // defesa transferida e nunca instalada.
-  provider: z
-    .string()
-    .min(1)
-    .refine(ehProvedorSuportado, {
-      message:
-        "provedor não suportado por esta instalação — escolha um da lista em Agente de IA → Provedores",
-    }),
+  provider: z.string().min(1),
   model_id: z.string().min(1),
   credential_id: z.string().uuid().nullable().optional(),
   base_url: z.string().url().nullable().optional(),
   is_enabled: z.boolean().optional(),
+}).superRefine((c, ctx) => {
+  // A conta ChatGPT conectada por login só é aceita nos pontos que sabem usá-la
+  // (os do Supervisor — `lib/supervisor/modelo.ts`). Em qualquer outro ponto o
+  // resolvedor não a reconhece e cairia no padrão com aviso: aceitar aqui seria
+  // a tela gravar uma escolha que a chamada ignora.
+  const assinaturaNoSupervisor = c.provider === PROVEDOR_POR_ASSINATURA && PONTOS_DO_SUPERVISOR_SET.has(c.purpose);
+  if (!ehProvedorSuportado(c.provider) && !assinaturaNoSupervisor) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["provider"],
+      message: "provedor não suportado por esta instalação — escolha um da lista em Agente de IA → Provedores",
+    });
+  }
 });
+const PONTOS_DO_SUPERVISOR_SET: ReadonlySet<string> = new Set(PONTOS_DO_SUPERVISOR);
 
 export async function PUT(req: NextRequest): Promise<Response> {
   const supportDenied = await requireSupportWrite();
@@ -274,7 +284,25 @@ export async function PUT(req: NextRequest): Promise<Response> {
   // A credencial precisa ser DESTA organização. O client de sessão já aplica
   // RLS, mas a checagem explícita devolve mensagem em vez de um silencioso
   // "0 linhas" que a tela leria como sucesso.
-  if (corpo.credential_id) {
+  if (corpo.provider === PROVEDOR_POR_ASSINATURA) {
+    // Pela assinatura não há catálogo: o modelo tem de estar entre os que a
+    // conta conectada enxerga, e a credencial tem de ser a do login.
+    const { data: conta } = await db
+      .from("ai_provider_credentials")
+      .select("id, models_available")
+      .eq("organization_id", org.orgId)
+      .eq("provider", PROVEDOR_POR_ASSINATURA)
+      .eq("is_active", true)
+      .maybeSingle();
+    const linha = conta as { id: string; models_available: string[] | null } | null;
+    if (!linha) return fail("credencial_invalida", t("a conta ChatGPT não está conectada nesta organização"), 422);
+    if (corpo.credential_id && corpo.credential_id !== linha.id) {
+      return fail("credencial_de_outro_provedor", t("a credencial escolhida não é a da conta ChatGPT conectada"), 422);
+    }
+    if (!(linha.models_available ?? []).includes(corpo.model_id)) {
+      return fail("modelo_desconhecido", t(`a conta ChatGPT conectada não tem o modelo "${corpo.model_id}"`), 422);
+    }
+  } else if (corpo.credential_id) {
     const { data: cred } = await db
       .from("ai_provider_credentials")
       .select("id, provider")

@@ -7,6 +7,8 @@ import type { CredentialRow } from "@/hooks/ai/useCredentials";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { contarUsoQueBloqueia, type VersaoVinculada } from "@/lib/ai/credenciais/uso";
 import { CredentialsList } from "./_components/CredentialsList";
+import { PainelDeLoginCodex } from "./_components/PainelDeLoginCodex";
+import { PROVEDOR_POR_ASSINATURA } from "@/lib/ai/credenciais/login-codex";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +31,10 @@ export default async function CredentialsPage() {
     .eq("organization_id", activeOrg.orgId)
     .order("created_at", { ascending: false });
 
-  const credentials = (data ?? []) as unknown as CredentialRow[];
+  const todas = (data ?? []) as unknown as CredentialRow[];
+  // A conta conectada por login não é uma chave: tem painel próprio, sem rotacionar.
+  const assinatura = todas.find((c) => (c.provider as string) === PROVEDOR_POR_ASSINATURA) ?? null;
+  const credentials = todas.filter((c) => (c.provider as string) !== PROVEDOR_POR_ASSINATURA);
   const canWrite = ROLE_RANK[activeOrg.role] >= ROLE_RANK.admin;
 
   // Mesma regra do DELETE — e a mesma da FK `ON DELETE RESTRICT`: TODA versão
@@ -56,6 +61,13 @@ export default async function CredentialsPage() {
           )}
         </p>
       </header>
+      <PainelDeLoginCodex
+        conectado={assinatura !== null}
+        conta={assinatura?.api_key_last4 ?? null}
+        modelos={assinatura?.models_available?.length ?? 0}
+        erroDaConta={assinatura?.validation_error ?? null}
+        canWrite={canWrite}
+      />
       <CredentialsList
         initialData={credentials}
         canWrite={canWrite}

@@ -250,6 +250,73 @@ export async function completarRedacaoDoContato(
     else tabelas.push("followup_enrollments");
   }
 
+  // ── Passo 5 — o que o Supervisor Comercial guardou da conversa (migration 0381) ──
+  //
+  // `supervisor_runs.summary/analysis` e `supervisor_actions.evidence` carregam
+  // trechos citados das mensagens — dado do titular. Redige-se o texto e
+  // preservam-se as linhas (contagens e timestamps seguem valendo para o
+  // diagnóstico), como no passo das atividades. SELECT antes do UPDATE pelo
+  // mesmo motivo dos passos acima: em regime não há o que redigir, e a auditoria
+  // não deve registrar efeito que não houve.
+  const { data: leiturasData, error: leiturasErr } = await db
+    .from("supervisor_runs")
+    .select("id, summary")
+    .eq("organization_id", contato.organizationId)
+    .eq("contact_id", contato.id);
+  if (leiturasErr) falhas.push(`supervisor_runs select: ${leiturasErr.message}`);
+  const leituras = ((leiturasData ?? []) as { id: string; summary: string }[])
+    .filter((r) => r.summary !== "")
+    .map((r) => r.id);
+  if (leituras.length > 0) {
+    const { error } = await db
+      .from("supervisor_runs")
+      .update({ summary: "", analysis: { redigido_por_lgpd: true } })
+      .eq("organization_id", contato.organizationId)
+      .in("id", leituras);
+    if (error) falhas.push(`supervisor_runs: ${error.message}`);
+    else tabelas.push("supervisor_runs");
+  }
+  const { data: acoesData, error: acoesErr } = await db
+    .from("supervisor_actions")
+    .select("id, evidence")
+    .eq("organization_id", contato.organizationId)
+    .eq("contact_id", contato.id);
+  if (acoesErr) falhas.push(`supervisor_actions select: ${acoesErr.message}`);
+  const acoes = ((acoesData ?? []) as { id: string; evidence: unknown[] | null }[])
+    .filter((r) => (r.evidence ?? []).length > 0)
+    .map((r) => r.id);
+  if (acoes.length > 0) {
+    const { error } = await db
+      .from("supervisor_actions")
+      .update({ evidence: [], reason: "Redigido por solicitação LGPD" })
+      .eq("organization_id", contato.organizationId)
+      .in("id", acoes);
+    if (error) falhas.push(`supervisor_actions: ${error.message}`);
+    else tabelas.push("supervisor_actions");
+  }
+
+  // Os estudos de caso do diagnóstico guardam mensagens reais do contato
+  // (`supervisor_reports.diagnosis.casos[].evidencias`). O caso do contato sai do
+  // relatório; os números agregados — que não identificam ninguém — ficam.
+  const { data: relData, error: relErr } = await db
+    .from("supervisor_reports")
+    .select("id, diagnosis")
+    .eq("organization_id", contato.organizationId);
+  if (relErr) falhas.push(`supervisor_reports select: ${relErr.message}`);
+  let relatoriosRedigidos = 0;
+  for (const r of (relData ?? []) as { id: string; diagnosis: { casos?: Array<{ contact_id?: string | null }> } | null }[]) {
+    const casos = r.diagnosis?.casos ?? [];
+    if (!casos.some((c) => c.contact_id === contato.id)) continue;
+    const { error } = await db
+      .from("supervisor_reports")
+      .update({ diagnosis: { ...r.diagnosis, casos: casos.filter((c) => c.contact_id !== contato.id) } })
+      .eq("organization_id", contato.organizationId)
+      .in("id", [r.id]);
+    if (error) falhas.push(`supervisor_reports: ${error.message}`);
+    else relatoriosRedigidos += 1;
+  }
+  if (relatoriosRedigidos > 0) tabelas.push("supervisor_reports");
+
   return { leadsRedigidas, atividadesRedigidas, tabelas, falhas };
 }
 

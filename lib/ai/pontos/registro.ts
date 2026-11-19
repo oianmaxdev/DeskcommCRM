@@ -322,6 +322,32 @@ export const PONTOS_DE_IA: readonly PontoDeIa[] = [
       "As retomadas saem todas no mesmo horário fixo, sem respeitar o ritmo de cada cliente.",
     registraEm: "llm_calls",
   },
+  {
+    id: "supervisor_observe",
+    rotulo: "Manter o CRM em dia pelas conversas da equipe",
+    oQueFaz:
+      "Lê as conversas conduzidas pelos vendedores e atualiza etapa, campos, tags, tarefas e os sinais do score — " +
+      "com a prova citada. Nunca fala com o cliente.",
+    papel: "entender",
+    // Sem ferramenta: a saída é um objeto tipado que o CÓDIGO confere e aplica.
+    exige: {},
+    emissor: "lib/supervisor/observador.ts",
+    sintomaDeFalha:
+      "O funil volta a depender do vendedor lembrar de atualizar: cards parados, campos vazios, score sem sinal.",
+    registraEm: "llm_calls",
+  },
+  {
+    id: "supervisor_diagnose",
+    rotulo: "Escrever o diagnóstico comercial do período",
+    oQueFaz:
+      "Transforma os números do período e o que o Supervisor observou nas conversas em gargalos, riscos e " +
+      "recomendações para o gestor.",
+    papel: "melhorar",
+    exige: {},
+    emissor: "lib/supervisor/diagnostico.ts",
+    sintomaDeFalha: "O diagnóstico sai só com números, sem a interpretação.",
+    registraEm: "llm_calls",
+  },
 
   // ────────────────────────── Proteger a operação ──────────────────────────
   {

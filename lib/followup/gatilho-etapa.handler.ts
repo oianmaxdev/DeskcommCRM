@@ -5,6 +5,7 @@
  * com o registry e o client de produção.
  */
 import type { EventHandler, HandlerResult } from "@/lib/event-log/dispatcher";
+import { eventoPedeSemDisparo } from "@/lib/event-log/sem-disparo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { avisarSequenciaParada } from "@/lib/automation/parada-no-assistido";
 import { createSupabaseFollowupGateDb } from "@/lib/followup/agent-followup-gate";
@@ -21,6 +22,12 @@ export const followupGatilhoEtapaHandler: EventHandler = {
   naOrgParada: "pula",
   events: [EVENTO_DE_ETAPA],
   async handle(row): Promise<HandlerResult> {
+    // Movimento feito SOZINHO pelo Supervisor Comercial não inscreve ninguém em
+    // fluxo de mensagem (ver lib/event-log/sem-disparo.ts). O Supervisor tem a
+    // ação própria `start_followup`, que passa pela política e pela aprovação.
+    if (eventoPedeSemDisparo(row.metadata)) {
+      return { consumer_key: FOLLOWUP_GATILHO_ETAPA_HANDLER_KEY, status: "skipped", detail: "sem_disparo_automatico" };
+    }
     try {
       const admin = createAdminClient();
       const summary = await aplicaGatilhoDeEtapa(

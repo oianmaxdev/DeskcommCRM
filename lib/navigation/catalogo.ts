@@ -1083,6 +1083,19 @@ export const NAV_CATALOG = [
     minRole: "manager",
   },
   {
+    // Supervisor Comercial por IA (issues #2092 e #4088). Em Análise, e não em
+    // Agentes de IA: ele não atende ninguém — observa a equipe, mantém o CRM em
+    // dia e escreve o diagnóstico do período. `manager` porque mostra trechos de
+    // conversa de toda a equipe e decide pendências que fecham negócio.
+    href: "/app/analise/supervisor",
+    label: "Supervisor Comercial",
+    description: "A IA mantém o CRM em dia a partir das conversas da equipe e diagnostica o atendimento do período.",
+    icon: "ShieldCheck",
+    group: "analise",
+    section: "Os números do período",
+    minRole: "manager",
+  },
+  {
     // Observabilidade, não configuração: por isso não fica junto dos agentes.
     href: "/app/ai/evolution",
     label: "Evolução da IA",

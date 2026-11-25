@@ -90,6 +90,12 @@ const FORA_DE_INTERFACE: Record<string, string> = {
   // da interface faria um documento de conformidade mudar de forma conforme
   // quem apertou o botão.
   "lib/lgpd/pdf-renderer.tsx": "documento legal brasileiro: a data acompanha a lei, não a interface",
+
+  // ─── Supervisor Comercial: conteúdo, não interface ───
+  "lib/supervisor/prompt.ts":
+    "texto lido pelo MODELO, escrito em português: o dia da semana entra no idioma do prompt, não no de quem abre a tela",
+  "lib/supervisor/relatorio-pdf.tsx":
+    "PDF do diagnóstico: rótulos e texto do modelo são gerados em português; a data acompanha o documento (traduzir o PDF é um passe próprio)",
 };
 
 function arquivos(dir: string, acc: string[] = []): string[] {

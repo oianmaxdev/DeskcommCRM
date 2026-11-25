@@ -139,3 +139,72 @@ revoke all on public.supervisor_settings, public.supervisor_runs,
   public.supervisor_actions, public.supervisor_reports from anon, authenticated;
 grant select on public.supervisor_settings, public.supervisor_runs,
   public.supervisor_actions, public.supervisor_reports to authenticated;
+
+-- ---- Fila justa do Supervisor (achado A da auditoria de 2026-11-25) ----
+--
+-- A rodada pegava as N conversas MAIS ANTIGAS da janela e só depois descartava
+-- as já lidas: quando as N primeiras já tinham sido analisadas, as mais novas
+-- nunca entravam (starvation). A seleção passa a ser do lado do banco, por
+-- anti-join: só volta conversa cuja última mensagem é mais nova que a última
+-- leitura concluída E que não tem reivindicação recente (em andamento ou que
+-- falhou há menos de `p_reclamar_antes`). A reivindicação `em_processamento`
+-- NÃO conta como leitura concluída — contava, e um processo morto no meio
+-- deixava a conversa "lida" para sempre.
+--
+-- `security invoker`, só para `service_role` (o cron e as rotas do Supervisor
+-- usam o cliente admin): revogada das duas origens de EXECUTE (doutrina 9).
+-- O filtro por organização é o primeiro predicado, do parâmetro do servidor.
+create or replace function public.fn_supervisor_conversas_pendentes(
+  p_org uuid,
+  p_desde timestamptz,
+  p_ate timestamptz,
+  p_reclamar_antes timestamptz,
+  p_limite integer
+)
+returns table (
+  id uuid,
+  contact_id uuid,
+  assigned_to_user_id uuid,
+  status text,
+  last_message_at timestamptz,
+  cursor timestamptz
+)
+language sql
+stable
+set search_path = public
+as $$
+  select c.id, c.contact_id, c.assigned_to_user_id, c.status::text, c.last_message_at,
+         (select max(r.last_message_at)
+            from public.supervisor_runs r
+           where r.organization_id = p_org
+             and r.conversation_id = c.id
+             and (r.status in ('analyzed', 'ambiguous')
+                  or (r.status = 'skipped' and coalesce(r.skip_reason, '') <> 'em_processamento'))) as cursor
+    from public.conversations c
+   where c.organization_id = p_org
+     and c.is_group = false
+     and c.last_message_at >= p_desde
+     and c.last_message_at <= p_ate
+     and not exists (
+       select 1
+         from public.supervisor_runs r
+        where r.organization_id = p_org
+          and r.conversation_id = c.id
+          and r.last_message_at >= c.last_message_at
+          and (r.status in ('analyzed', 'ambiguous')
+               or (r.status = 'skipped' and coalesce(r.skip_reason, '') <> 'em_processamento')
+               or r.created_at > p_reclamar_antes))
+   order by c.last_message_at asc, c.id asc
+   limit greatest(1, least(coalesce(p_limite, 20), 1000));
+$$;
+revoke execute on function public.fn_supervisor_conversas_pendentes(uuid, timestamptz, timestamptz, timestamptz, integer)
+  from public, anon, authenticated;
+grant execute on function public.fn_supervisor_conversas_pendentes(uuid, timestamptz, timestamptz, timestamptz, integer)
+  to service_role;
+
+-- Justiça entre organizações: a rodada começa pela organização servida há mais
+-- tempo. Sem isto, a ordem era fixa e, com a rodada perto do limite de tempo,
+-- as últimas da lista nunca eram atendidas.
+alter table public.supervisor_settings add column if not exists ultima_rodada_em timestamptz;
+create index if not exists supervisor_settings_fila_idx
+  on public.supervisor_settings (ultima_rodada_em asc nulls first) where enabled;

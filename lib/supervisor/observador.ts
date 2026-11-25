@@ -177,7 +177,19 @@ export interface ResumoDaRodada {
   falhas: number;
   /** Conversas que NÃO foram lidas por falta de modelo de IA utilizável. */
   sem_modelo: number;
+  /** A rodada parou de começar conversas por prazo; o restante vai na próxima. */
+  interrompida_por_prazo: boolean;
 }
+
+const CONTADORES = [
+  "conversas_lidas",
+  "puladas",
+  "ambiguas",
+  "acoes_aplicadas",
+  "acoes_pendentes",
+  "falhas",
+  "sem_modelo",
+] as const satisfies ReadonlyArray<keyof ResumoDaRodada>;
 
 const zero = (): ResumoDaRodada => ({
   organizacoes: 0,
@@ -188,22 +200,41 @@ const zero = (): ResumoDaRodada => ({
   acoes_pendentes: 0,
   falhas: 0,
   sem_modelo: 0,
+  interrompida_por_prazo: false,
 });
 
-/** Uma rodada sobre todas as organizações com o Supervisor ligado. */
-export async function rodadaDoSupervisor(deps: DepsDoObservador, requestId: string): Promise<ResumoDaRodada> {
+/** Uma rodada leva no máximo isto; o agendador corta em 240 s (docker/scheduler/entrypoint.sh). */
+export const PRAZO_DA_RODADA_MS = 200_000;
+
+/**
+ * Uma rodada sobre as organizações com o Supervisor ligado — a menos
+ * recentemente servida primeiro (`ultima_rodada_em`, achado A), com prazo
+ * global. Organização que ficou de fora por prazo encabeça a próxima rodada.
+ */
+export async function rodadaDoSupervisor(
+  deps: DepsDoObservador,
+  requestId: string,
+  prazoMs: number = PRAZO_DA_RODADA_MS,
+): Promise<ResumoDaRodada> {
   const total = zero();
+  const prazo = deps.agora().getTime() + prazoMs;
   const { data, error } = await deps.admin
     .from("supervisor_settings")
-    .select("organization_id, config")
+    .select("organization_id, config, ultima_rodada_em")
     .eq("enabled", true)
-    .limit(100);
+    .order("ultima_rodada_em", { ascending: true, nullsFirst: true })
+    .limit(500);
   if (error) throw new Error(`supervisor_settings: ${error.message}`);
   for (const row of (data ?? []) as Array<{ organization_id: string; config: unknown }>) {
+    if (deps.agora().getTime() >= prazo) {
+      total.interrompida_por_prazo = true;
+      break;
+    }
     try {
-      const r = await observaOrganizacao(deps, row.organization_id, lerConfig(row.config), { requestId });
+      const r = await observaOrganizacao(deps, row.organization_id, lerConfig(row.config), { requestId, prazo });
       total.organizacoes += 1;
-      for (const k of Object.keys(r) as Array<keyof ResumoDaRodada>) if (k !== "organizacoes") total[k] += r[k];
+      for (const k of CONTADORES) total[k] += r[k];
+      if (r.interrompida_por_prazo) total.interrompida_por_prazo = true;
     } catch (err) {
       total.falhas += 1;
       logger.error("[supervisor] organização falhou (segue)", {
@@ -211,6 +242,12 @@ export async function rodadaDoSupervisor(deps: DepsDoObservador, requestId: stri
         error: err instanceof Error ? err.message : String(err),
       });
     }
+    // Servida (inclusive quando falhou): vai para o fim da fila. Organização
+    // que dá erro sempre não pode ficar na frente de todas para sempre.
+    await deps.admin
+      .from("supervisor_settings")
+      .update({ ultima_rodada_em: deps.agora().toISOString() })
+      .eq("organization_id", row.organization_id);
   }
   return total;
 }
@@ -219,7 +256,7 @@ export async function observaOrganizacao(
   deps: DepsDoObservador,
   orgId: string,
   config: SupervisorConfig,
-  opts: { requestId: string; conversationId?: string; ignorarSilencio?: boolean },
+  opts: { requestId: string; conversationId?: string; ignorarSilencio?: boolean; prazo?: number },
 ): Promise<ResumoDaRodada> {
   const r = zero();
   if (config.pipelines.length === 0) return r;
@@ -231,38 +268,42 @@ export async function observaOrganizacao(
   const limiteSilencio = new Date(agora.getTime() - (opts.ignorarSilencio ? 0 : config.silencio_minutos * 60_000));
   const horizonte = new Date(agora.getTime() - HORIZONTE_DIAS * 24 * 3600 * 1000);
 
-  let q = deps.admin
-    .from("conversations")
-    .select("id, contact_id, assigned_to_user_id, status, last_message_at")
-    .eq("organization_id", orgId)
-    .eq("is_group", false)
-    .lte("last_message_at", limiteSilencio.toISOString())
-    .gte("last_message_at", horizonte.toISOString())
-    .order("last_message_at", { ascending: true })
-    .limit(config.max_conversas_por_rodada * 5);
-  if (opts.conversationId) q = q.eq("id", opts.conversationId);
-  const { data: convs, error } = await q;
-  if (error) throw new Error(`conversations: ${error.message}`);
-  const lista = (convs ?? []) as Array<{
+  // Só conversas PENDENTES, selecionadas no banco (achado A): leitura concluída
+  // mais nova que a última mensagem fica de fora, e reivindicação recente
+  // (em andamento ou falha há menos de RECLAMAR_APOS_MS) também — senão elas
+  // ocupariam as vagas da rodada sem serem lidas.
+  const pedido = Math.max(1, config.max_conversas_por_rodada);
+  const { data: convs, error } = await deps.admin.rpc("fn_supervisor_conversas_pendentes", {
+    p_org: orgId,
+    p_desde: horizonte.toISOString(),
+    p_ate: limiteSilencio.toISOString(),
+    p_reclamar_antes: new Date(agora.getTime() - RECLAMAR_APOS_MS).toISOString(),
+    p_limite: opts.conversationId ? 1000 : pedido,
+  });
+  if (error) throw new Error(`fn_supervisor_conversas_pendentes: ${error.message}`);
+  const todas = (convs ?? []) as Array<{
     id: string;
     contact_id: string;
     assigned_to_user_id: string | null;
     status: string;
     last_message_at: string;
+    cursor: string | null;
   }>;
-  if (lista.length === 0) return r;
-
-  const cursores = await cursoresDas(deps.admin, orgId, lista.map((c) => c.id));
-  const pendentes = lista.filter((c) => {
-    const cur = cursores.get(c.id);
-    return !cur || new Date(c.last_message_at).getTime() > new Date(cur).getTime();
-  });
+  const pendentes = opts.conversationId ? todas.filter((c) => c.id === opts.conversationId) : todas;
+  if (pendentes.length === 0) return r;
+  const cursores = new Map(pendentes.filter((c) => c.cursor).map((c) => [c.id, c.cursor as string]));
 
   const { data: orgRow } = await deps.admin.from("organizations").select("timezone, onboarding_state").eq("id", orgId).maybeSingle();
   const fuso = (orgRow as { timezone: string | null } | null)?.timezone ?? null;
   const negocio = negocioDaOrganizacao((orgRow as { onboarding_state: unknown } | null)?.onboarding_state);
 
-  for (const conv of pendentes.slice(0, config.max_conversas_por_rodada)) {
+  for (const conv of pendentes.slice(0, pedido)) {
+    // Prazo da rodada: perto do limite do agendador, não começa conversa nova.
+    // O que sobrar entra na próxima rodada, que começa por esta organização.
+    if (opts.prazo !== undefined && deps.agora().getTime() >= opts.prazo) {
+      r.interrompida_por_prazo = true;
+      break;
+    }
     try {
       const x = await observaConversa(deps, orgId, config, conv, cursores.get(conv.id) ?? null, opts.requestId, fuso, negocio);
       r.conversas_lidas += x.lida ? 1 : 0;
@@ -282,24 +323,6 @@ export async function observaOrganizacao(
     }
   }
   return r;
-}
-
-async function cursoresDas(admin: SupabaseClient, orgId: string, ids: string[]): Promise<Map<string, string>> {
-  const m = new Map<string, string>();
-  if (ids.length === 0) return m;
-  const { data, error } = await admin
-    .from("supervisor_runs")
-    .select("conversation_id, last_message_at, status")
-    .eq("organization_id", orgId)
-    .in("conversation_id", ids)
-    .in("status", ["analyzed", "skipped", "ambiguous"])
-    .order("last_message_at", { ascending: false })
-    .limit(ids.length * 3);
-  if (error) throw new Error(`supervisor_runs: ${error.message}`);
-  for (const row of (data ?? []) as Array<{ conversation_id: string; last_message_at: string }>) {
-    if (!m.has(row.conversation_id)) m.set(row.conversation_id, row.last_message_at);
-  }
-  return m;
 }
 
 interface Claim {

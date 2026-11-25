@@ -38,7 +38,49 @@ export class BancoEmMemoria {
 
   async rpc(nome: string, args: Record<string, unknown>) {
     this.rpcs.push({ nome, args });
+    if (nome === "fn_supervisor_conversas_pendentes") return { data: this.pendentes(args), error: null };
     return { data: null, error: null };
+  }
+
+  /**
+   * Espelho de `public.fn_supervisor_conversas_pendentes` (migration 5001):
+   * MESMA regra, para os testes de unidade. A prova em Postgres real é
+   * `tests/invariants/supervisor-fila-justa.test.ts`.
+   */
+  private pendentes(a: Record<string, unknown>) {
+    const org = a.p_org as string;
+    const desde = a.p_desde as string;
+    const ate = a.p_ate as string;
+    const reclamar = a.p_reclamar_antes as string;
+    const limite = Math.max(1, Math.min(Number(a.p_limite ?? 20), 1000));
+    const concluida = (r: Linha) =>
+      r.status === "analyzed" || r.status === "ambiguous" || (r.status === "skipped" && (r.skip_reason ?? "") !== "em_processamento");
+    const runs = this.linhas("supervisor_runs").filter((r) => r.organization_id === org);
+    return this.linhas("conversations")
+      .filter((c) => c.organization_id === org && c.is_group !== true)
+      .filter((c) => String(c.last_message_at) >= desde && String(c.last_message_at) <= ate)
+      .filter(
+        (c) =>
+          !runs.some(
+            (r) =>
+              r.conversation_id === c.id &&
+              String(r.last_message_at) >= String(c.last_message_at) &&
+              (concluida(r) || String(r.created_at) > reclamar),
+          ),
+      )
+      .sort((x, y) => (String(x.last_message_at) < String(y.last_message_at) ? -1 : String(x.last_message_at) > String(y.last_message_at) ? 1 : String(x.id) < String(y.id) ? -1 : 1))
+      .slice(0, limite)
+      .map((c) => {
+        const lidas = runs.filter((r) => r.conversation_id === c.id && concluida(r)).map((r) => String(r.last_message_at));
+        return {
+          id: c.id,
+          contact_id: c.contact_id,
+          assigned_to_user_id: c.assigned_to_user_id ?? null,
+          status: c.status,
+          last_message_at: c.last_message_at,
+          cursor: lidas.length ? lidas.sort().at(-1)! : null,
+        };
+      });
   }
 
   violaUnica(t: string, nova: Linha, ignorarId?: unknown): boolean {
@@ -54,7 +96,7 @@ class Consulta implements PromiseLike<{ data: unknown; error: { message: string;
   private op: "select" | "insert" | "update" | "upsert" | "delete" = "select";
   private payload: Linha | Linha[] | null = null;
   private upsertOpts: { onConflict?: string; ignoreDuplicates?: boolean } = {};
-  private ordem: Array<{ col: string; asc: boolean }> = [];
+  private ordem: Array<{ col: string; asc: boolean; nullsFirst?: boolean }> = [];
   private limite: number | null = null;
   private modo: "many" | "single" | "maybe" = "many";
   private projeta = false;
@@ -125,8 +167,8 @@ class Consulta implements PromiseLike<{ data: unknown; error: { message: string;
     this.filtros.push((l) => String(l[c]) <= v);
     return this;
   }
-  order(col: string, o: { ascending?: boolean } = {}) {
-    this.ordem.push({ col, asc: o.ascending !== false });
+  order(col: string, o: { ascending?: boolean; nullsFirst?: boolean } = {}) {
+    this.ordem.push({ col, asc: o.ascending !== false, nullsFirst: o.nullsFirst });
     return this;
   }
   limit(n: number) {
@@ -153,8 +195,16 @@ class Consulta implements PromiseLike<{ data: unknown; error: { message: string;
       out = this.alvo();
       for (const o of [...this.ordem].reverse()) {
         out = [...out].sort((a, b) => {
-          const x = a[o.col] as string | number;
-          const y = b[o.col] as string | number;
+          const x = a[o.col] as string | number | null | undefined;
+          const y = b[o.col] as string | number | null | undefined;
+          const xn = x === null || x === undefined;
+          const yn = y === null || y === undefined;
+          if (xn || yn) {
+            if (xn && yn) return 0;
+            // Postgres: NULLS LAST no ascendente, salvo `nullsFirst`.
+            const nulosPrimeiro = o.nullsFirst ?? !o.asc;
+            return (xn ? -1 : 1) * (nulosPrimeiro ? 1 : -1);
+          }
           return (x < y ? -1 : x > y ? 1 : 0) * (o.asc ? 1 : -1);
         });
       }

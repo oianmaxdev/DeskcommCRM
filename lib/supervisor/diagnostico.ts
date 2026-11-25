@@ -42,6 +42,7 @@ import {
 } from "./casos";
 import { criteriosEmVigor, rotuloDoCriterio, type SupervisorConfig } from "./config";
 import { agregaLeituras, agregaPorVendedor, ROTULO_DO_PROBLEMA, type LeituraParaAgregar } from "./metricas";
+import { dataHora } from "./diario";
 import { resolverModeloDoSupervisor } from "./modelo";
 import { limparDiagnostico } from "./relatorio-tipos";
 import { negocioDaOrganizacao, orcamentoEsgotado, quemFalou, registraChamada } from "./observador";
@@ -374,12 +375,14 @@ export async function geraDiagnostico(
   const agregado = agregaLeituras(leituras);
   const porVendedor = escopo.owner_user_id ? [] : agregaPorVendedor(leituras);
 
-  const devidas = await conversasComFollowUpDevido(admin, orgId, leituras, config.followup_devido_horas, agora);
-  const dossies = montaDossies(leituras, (id) => devidas.has(id));
-  const categorias = contaPorCategoria(dossies);
-
   const { data: orgRow } = await admin.from("organizations").select("display_name, timezone, onboarding_state").eq("id", orgId).maybeSingle();
   const org = orgRow as { display_name: string | null; timezone: string | null; onboarding_state: unknown } | null;
+  const devidas = await conversasComFollowUpDevido(admin, orgId, leituras, config.followup_devido_horas, agora);
+  // O relatório é escrito em português (texto do modelo e rótulos do PDF): a data
+  // da verificação de omissão acompanha o documento, no fuso da empresa.
+  const dossies = montaDossies(leituras, (id) => devidas.has(id), (iso) => dataHora(iso, org?.timezone ?? null, "pt-BR"));
+  const categorias = contaPorCategoria(dossies);
+
   const negocio = negocioDaOrganizacao(org?.onboarding_state);
   const fuso = org?.timezone ?? null;
 
@@ -504,6 +507,9 @@ export async function geraDiagnostico(
         categoria: grupo?.categoria ?? null,
         estagio: grupo ? ROTULO_DO_ESTAGIO[grupo.estagio] : null,
         contexto: texto?.contexto ?? d.resumo,
+        // Como cada falha por omissão deste atendimento foi verificada (origem,
+        // prazo, ausência no canal) — texto do SISTEMA, não do modelo.
+        verificacoes: d.falhas.map((f) => f.verificacao).filter((v): v is string => Boolean(v)),
         // Mensagens REAIS, na ordem em que aconteceram. Sem citação válida do
         // modelo, mostram-se as primeiras da conversa — nunca texto reescrito.
         evidencias: (citadas.length > 0 ? citadas : msgs.slice(0, 8))

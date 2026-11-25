@@ -38,6 +38,7 @@ import { logger } from "@/lib/logger";
 import { analiseSchema, verificaEvidencia, type Analise, type MensagemDaJanela } from "./analise";
 import { criteriosEmVigor, lerConfig, type SupervisorConfig } from "./config";
 import { concluiAcao, executaAcao, type AcaoGravada } from "./executor";
+import { ehOmissao, provaPorOmissao } from "./omissao";
 import { decideAcoes, type AcaoPlanejada, type ContextoDoNegocio, type EtapaDoFunil } from "./politica";
 import { montaPrompt, SYSTEM_PROMPT_SUPERVISOR, type EtapaNoPrompt } from "./prompt";
 
@@ -619,9 +620,29 @@ async function observaConversa(
   // O que o diagnóstico vai CONTAR depois precisa ter a citação conferida agora,
   // enquanto a janela está à mão: falha ou ponto positivo sem trecho real fica
   // marcado e não entra em recorrência nem vira estudo de caso.
+  // Falha por OMISSÃO (falta de retorno, compromisso não cumprido) não tem frase
+  // que prove a ausência: ela se prova pela origem citada + prazo vencido +
+  // ausência verificável de acompanhamento + nada programado (lib/supervisor/omissao.ts).
+  const temOmissao = analise.problemas.some((p) => ehOmissao(p.codigo));
+  let acaoProgramada = false;
+  if (temOmissao) {
+    const [{ data: futuras }, { data: inscricoes }] = await Promise.all([
+      leadId
+        ? admin.from("crm_tasks").select("id").eq("organization_id", orgId).eq("lead_id", leadId).in("status", ["pending", "in_progress"]).gt("due_date", agora.toISOString()).limit(1)
+        : Promise.resolve({ data: [] as unknown[] }),
+      admin.from("followup_enrollments").select("id").eq("organization_id", orgId).eq("contact_id", conv.contact_id).in("status", ["active", "waiting_reply"]).limit(1),
+    ]);
+    acaoProgramada = (futuras ?? []).length > 0 || (inscricoes ?? []).length > 0;
+  }
   const analiseGravada = {
     ...analise,
-    problemas: analise.problemas.map((p) => ({ ...p, evidencia_verificada: verificaEvidencia(janela, p.evidencia).ok })),
+    problemas: analise.problemas.map((p) => {
+      if (!ehOmissao(p.codigo)) return { ...p, evidencia_verificada: verificaEvidencia(janela, p.evidencia).ok };
+      const r = provaPorOmissao({ codigo: p.codigo, janela, citacao: p.evidencia, prazoIso: p.prazo_iso ?? null, agora, fuso, acaoProgramada });
+      return r.ok
+        ? { ...p, evidencia_verificada: true, prova_por_omissao: r.prova }
+        : { ...p, evidencia_verificada: false, omissao_nao_comprovada: r.motivo };
+    }),
     pontos_positivos: analise.pontos_positivos.map((p) => ({ ...p, evidencia_verificada: verificaEvidencia(janela, p.evidencia).ok })),
     criterios_formais: formal,
   };

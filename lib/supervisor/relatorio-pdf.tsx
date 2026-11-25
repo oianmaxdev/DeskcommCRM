@@ -164,6 +164,18 @@ function Caso({ caso, n, titulo, fuso }: { caso: CasoDoRelatorio; n: number; tit
         </View>
       ) : null}
 
+      {(caso.verificacoes ?? []).length > 0 ? (
+        <View>
+          <Text style={s.h2}>Como a ausência foi verificada</Text>
+          {caso.verificacoes!.map((v, i) => (
+            <View key={i} style={s.item} wrap={false}>
+              <Text style={s.marcador}>{"•"}</Text>
+              <Text style={s.itemTexto}>{T(v)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {caso.como_melhorar.length > 0 || caso.follow_up_sugerido ? (
         <View>
           <Text style={s.h2}>Como poderia ter sido melhor</Text>

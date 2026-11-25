@@ -403,6 +403,16 @@ function EstudoDeCaso({ caso, n, fuso }: { caso: CasoDoRelatorio; n: number; fus
             </ul>
           </section>
         )}
+        {(caso.verificacoes ?? []).length > 0 && (
+          <section data-testid="supervisor-caso-verificacao">
+            <h4 className="mb-1 font-semibold">{t("Como a ausência foi verificada")}</h4>
+            <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
+              {caso.verificacoes!.map((v, i) => (
+                <li key={i}>{v}</li>
+              ))}
+            </ul>
+          </section>
+        )}
         {(caso.como_melhorar.length > 0 || caso.follow_up_sugerido) && (
           <section className="space-y-2">
             <h4 className="font-semibold">{t("Como poderia ter sido melhor")}</h4>

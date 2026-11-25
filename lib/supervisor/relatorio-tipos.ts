@@ -25,6 +25,8 @@ export interface CasoDoRelatorio {
   evidencias: EvidenciaDoCaso[];
   positivos: string[];
   faltou: Array<{ titulo: string; explicacao: string }>;
+  /** Falhas por omissão: como foram verificadas (origem, prazo, ausência no canal). */
+  verificacoes?: string[];
   como_melhorar: Array<{ quando: string; exemplo_de_mensagem: string }>;
   follow_up_sugerido: string | null;
   resumo: string;

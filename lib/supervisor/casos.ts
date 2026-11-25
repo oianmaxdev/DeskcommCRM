@@ -25,6 +25,7 @@ import {
   type EstagioDaNegociacao,
   type ProblemaDeAtendimento,
 } from "./analise";
+import { fraseDaProva, type ProvaPorOmissao } from "./omissao";
 import { ROTULO_DO_PROBLEMA } from "./metricas";
 
 export const MAX_CASOS = 5;
@@ -51,6 +52,8 @@ export interface Falha {
   trecho: string | null;
   /** Em quantas leituras desta MESMA conversa a falha apareceu (não infla a recorrência). */
   ocorrencias_na_conversa: number;
+  /** Falha por omissão: como ela foi verificada (origem, prazo, ausência no canal) — nunca "não aconteceu". */
+  verificacao?: string;
 }
 
 export interface Dossie {
@@ -82,6 +85,7 @@ export interface LeituraDoPeriodo {
       descricao?: string;
       evidencia?: { trecho?: string } | null;
       evidencia_verificada?: boolean;
+      prova_por_omissao?: ProvaPorOmissao;
     }>;
     pontos_positivos?: Array<{ texto?: string; evidencia_verificada?: boolean }>;
     desfecho?: { tipo?: string };
@@ -99,6 +103,8 @@ const ehEstagio = (e: unknown): e is EstagioDaNegociacao => (ESTAGIOS_DA_NEGOCIA
 export function montaDossies(
   leituras: readonly LeituraDoPeriodo[],
   followUpDevido: (conversationId: string) => boolean,
+  /** Formata data/hora no fuso da empresa para a frase de verificação da omissão. */
+  formata: (iso: string) => string = (iso) => iso,
 ): Dossie[] {
   const porConversa = new Map<string, LeituraDoPeriodo[]>();
   for (const l of [...leituras].sort((a, b) => a.last_message_at.localeCompare(b.last_message_at))) {
@@ -122,7 +128,7 @@ export function montaDossies(
       }
       for (const p of a.problemas ?? []) {
         if (!ehCategoria(p.codigo)) continue;
-        const trecho = p.evidencia?.trecho?.trim() || null;
+        const trecho = p.prova_por_omissao?.origem.trecho?.trim() || p.evidencia?.trecho?.trim() || null;
         // Leitura antiga não tem a marca: vale a citação existir. Leitura nova:
         // só conta se o código conferiu o trecho na conversa.
         const comprovada = p.evidencia_verificada === undefined ? trecho !== null : p.evidencia_verificada;
@@ -148,6 +154,7 @@ export function montaDossies(
             descricao: p.descricao?.trim() || "",
             trecho,
             ocorrencias_na_conversa: 1,
+            ...(p.prova_por_omissao ? { verificacao: fraseDaProva(p.prova_por_omissao, formata) } : {}),
           });
         }
       }

@@ -47,6 +47,9 @@ REGRAS INEGOCIÁVEIS
       aconteceu nesta conversa.
    d) FOLLOW-UP: não registre "sem_follow_up" nem "compromisso_nao_cumprido" se ainda não se passaram 24 horas
       da última mensagem, ou se o prazo combinado ainda não chegou.
+      Nessas duas falhas (omissão), a "evidencia" é a ORIGEM: a mensagem em que o passo foi combinado (cite o
+      trecho literal do compromisso) e, se um momento foi combinado, devolva "prazo_iso". Nunca afirme que algo não
+      aconteceu: o sistema confere o prazo e a ausência de acompanhamento no histórico.
    e) AGILIDADE: os horários estão no fuso da empresa. Calcule o intervalo real entre a mensagem do cliente e a
       resposta. Mensagem recebida à noite, de madrugada ou no fim de semana não conta como demora até o início
       do próximo período comercial. Só elogie agilidade (ou critique demora) quando os horários sustentarem

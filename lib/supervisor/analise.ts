@@ -163,6 +163,11 @@ export const analiseSchema = z.object({
           .max(140)
           .describe("a situação concreta, em uma frase curta: ex. 'informou o preço e não conduziu para o próximo passo'"),
         descricao: z.string().max(400).describe("o que aconteceu nesta conversa, com os fatos (horários, o que foi dito)"),
+        prazo_iso: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("só em compromisso_nao_cumprido/sem_follow_up: quando o passo combinado era devido (ISO-8601 com o offset do fuso); null se nenhum momento foi combinado"),
       }),
     )
     .max(6),

@@ -24,8 +24,20 @@ const UNICAS: Record<string, string[][]> = {
 
 let seq = 0;
 
+/** JSON com chaves em ordem — igualdade de jsonb não depende da ordem das chaves. */
+function canonico(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonico).join(",")}]`;
+  if (v && typeof v === "object") return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonico((v as Record<string, unknown>)[k])}`).join(",")}}`;
+  return JSON.stringify(v ?? null);
+}
+
 export class BancoEmMemoria {
   tabelas: Record<string, Linha[]> = {};
+  /**
+   * Gancho de teste de CONCORRÊNCIA: roda imediatamente antes de um UPDATE ser
+   * aplicado — o instante entre "conferi" e "gravei" em que outra pessoa mexe.
+   */
+  antesDeAtualizar?: (tabela: string) => void;
   rpcs: Array<{ nome: string; args: Record<string, unknown> }> = [];
 
   linhas(t: string): Linha[] {
@@ -132,7 +144,10 @@ class Consulta implements PromiseLike<{ data: unknown; error: { message: string;
     return this;
   }
   eq(c: string, v: unknown) {
-    this.filtros.push((l) => l[c] === v);
+    // jsonb comparado com texto JSON (como o PostgREST faz em `eq` numa coluna jsonb).
+    this.filtros.push((l) =>
+      l[c] !== null && typeof l[c] === "object" && typeof v === "string" ? canonico(l[c]) === canonico(JSON.parse(v)) : l[c] === v,
+    );
     return this;
   }
   neq(c: string, v: unknown) {
@@ -232,8 +247,14 @@ class Consulta implements PromiseLike<{ data: unknown; error: { message: string;
         out.push(n);
       }
     } else if (this.op === "update") {
+      // A mudança "do outro" acontece ANTES de o filtro condicional ser avaliado.
+      this.db.antesDeAtualizar?.(this.t);
       out = this.alvo();
-      for (const l of out) Object.assign(l, this.payload);
+      for (const l of out) {
+        Object.assign(l, this.payload);
+        // Espelho de `trg_crm_leads_updated_at`: todo UPDATE avança a versão.
+        if (this.t === "crm_leads") l.updated_at = new Date(Date.parse(String(l.updated_at ?? 0)) + 1 + seq++).toISOString();
+      }
     } else {
       out = this.alvo();
       this.db.tabelas[this.t] = tab.filter((l) => !out.includes(l));

@@ -736,7 +736,10 @@ async function observaConversa(
           lead_id: lead.id,
           kind: a.kind,
           risk: a.risk,
-          status: a.status,
+          // Automática nasce RESERVADA para execução, não "aplicada" (achado D):
+          // `applied` só depois do efeito confirmado, em concluiAcao.
+          status: a.status === "applied" ? "executing" : a.status,
+          ...(a.status === "applied" ? { execution_started_at: agora.toISOString(), execution_attempts: 1 } : {}),
           before: a.before,
           after: a.after,
           reason: a.reason.slice(0, 500),

@@ -22,6 +22,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { lerConfig } from "@/lib/supervisor/config";
 import { geraDiagnostico, interpretarComModelo, recorrenteVencido, redigirComModelo } from "@/lib/supervisor/diagnostico";
 import { analisarComModelo, rodadaDoSupervisor } from "@/lib/supervisor/observador";
+import { retomaAcoesInterrompidas } from "@/lib/supervisor/retomada";
 import { getSupervisorPool } from "@/lib/supervisor/pool";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,8 @@ async function handle(req: NextRequest): Promise<Response> {
 
   const admin = createAdminClient();
   try {
+    // Primeiro, o que ficou pela metade (achado D): ação reservada cujo processo caiu.
+    const retomada = await retomaAcoesInterrompidas(admin, getSupervisorPool(), new Date(), requestId);
     const rodada = await rodadaDoSupervisor(
       { admin, pool: getSupervisorPool(), agora: () => new Date(), analisar: analisarComModelo },
       requestId,
@@ -74,7 +77,7 @@ async function handle(req: NextRequest): Promise<Response> {
         });
       }
     }
-    return ok({ ...rodada, relatorios_recorrentes: relatorios }, { requestId });
+    return ok({ ...rodada, retomada, relatorios_recorrentes: relatorios }, { requestId });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     logger.error("[supervisor-comercial.cron] falhou", { error: detail, requestId });

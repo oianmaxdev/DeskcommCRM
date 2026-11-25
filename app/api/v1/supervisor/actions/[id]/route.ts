@@ -125,8 +125,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     acao.after = { ...acao.after, lost_reason: motivo };
   }
 
-  // Claim antes de executar: a execução é o efeito, e não pode rodar duas vezes.
-  if (!(await claim({ status: "approved", after: acao.after }))) {
+  // Reserva antes de executar (achado D): a decisão fica gravada, mas a ação
+  // só vira `approved` DEPOIS do efeito confirmado. Se o processo cair no meio,
+  // ela fica em `executing` e o cron a retoma (lib/supervisor/retomada.ts).
+  if (!(await claim({ status: "executing", after: acao.after, execution_started_at: new Date().toISOString(), execution_attempts: 1 }))) {
     return fail("conflict", "Esta ação já foi decidida.", 409, { requestId });
   }
   const quem = { aprovadorUserId: authz.user.id, llmCallId: null, requestId };

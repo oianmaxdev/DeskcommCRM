@@ -90,6 +90,7 @@ const ROTULO_DO_STATUS: Record<string, string> = {
   skipped: "Não aplicada",
   failed: "Falhou",
   superseded: "Substituída",
+  executing: "Em execução",
 };
 const ROTULO_DO_RISCO: Record<string, string> = { baixo: "Baixo risco", condicional: "Condicional", critico: "Crítica" };
 

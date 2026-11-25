@@ -86176,6 +86176,21 @@ alter table public.supervisor_settings add column if not exists ultima_rodada_em
 create index if not exists supervisor_settings_fila_idx
   on public.supervisor_settings (ultima_rodada_em asc nulls first) where enabled;
 
+-- ---- Execução com retomada (achado D da auditoria de 2026-11-25) ----
+--
+-- A ação nascia `applied` (ou virava `approved`) ANTES do efeito no CRM: um
+-- processo morto entre os dois deixava "aplicada" sem efeito, e a deduplicação
+-- impedia nova tentativa. Agora a ação passa por `executing` — com hora de
+-- início e contagem de tentativas — e só fecha em `applied`/`approved` depois do
+-- efeito confirmado. O cron retoma `executing` antiga (lib/supervisor/retomada.ts).
+alter table public.supervisor_actions add column if not exists execution_started_at timestamptz;
+alter table public.supervisor_actions add column if not exists execution_attempts integer not null default 0;
+alter table public.supervisor_actions drop constraint if exists supervisor_actions_status_check;
+alter table public.supervisor_actions add constraint supervisor_actions_status_check check (status in (
+  'applied','pending_approval','approved','rejected','skipped','failed','superseded','executing'));
+create index if not exists supervisor_actions_executando_idx
+  on public.supervisor_actions (execution_started_at) where status = 'executing';
+
 -- ---- módulos instalados são reaplicados, depois de toda tabela do núcleo (migration 0340) ----
 --
 -- A provisionadora de cada módulo instalado roda de novo, sobre o núcleo já

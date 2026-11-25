@@ -23585,6 +23585,7 @@ export const DICIONARIO: Traducoes = {
   "automático — a conta ChatGPT conectada, se houver; senão a chave da organização.": { es: "automático — la cuenta de ChatGPT conectada, si existe; si no, la clave de la organización." },
   "a conta ChatGPT não está conectada nesta organização": { es: "la cuenta de ChatGPT no está conectada en esta organización" },
   "a credencial escolhida não é a da conta ChatGPT conectada": { es: "la credencial elegida no es la de la cuenta de ChatGPT conectada" },
+  "Em execução": { es: "En ejecución" },
   "Preço informado sem agregar valor ao produto": { es: "Precio informado sin agregar valor al producto" },
   "Preço apresentado antes de entender a necessidade (critério antigo)": { es: "Precio presentado antes de entender la necesidad (criterio anterior)" },
   "Próximo passo prometido e não cumprido": { es: "Próximo paso prometido y no cumplido" },

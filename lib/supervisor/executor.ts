@@ -27,6 +27,8 @@ import { enrollFollowupFlow } from "@/lib/followup/enroll";
 import { emitLeadActivity, stageChangeReason } from "@/lib/leads/activity-emitter";
 import { encerraDemanda } from "@/lib/leads/encerramento";
 import { recalculaScoreDoLead } from "@/lib/leads/score-writer";
+import { createHash } from "node:crypto";
+
 import { SEM_DISPARO_AUTOMATICO } from "@/lib/event-log/sem-disparo";
 import { logger } from "@/lib/logger";
 
@@ -63,7 +65,76 @@ export interface QuemExecuta {
    * Aprovação humana sempre dispara: é decisão de gente, como o arrasto.
    */
   dispararAutomacoes?: boolean;
+  /**
+   * Retomada de uma execução interrompida (achado D): o efeito pode já ter
+   * acontecido. Cada tipo de ação confere o próprio efeito antes de repeti-lo,
+   * e "já está assim" passa a contar como aplicado — nunca o contrário.
+   */
+  retomada?: boolean;
 }
+
+/** Id determinístico de um efeito da ação (tarefa, checkpoint): a retomada bate na chave e não duplica. */
+export function idDoEfeito(acaoId: string, efeito: string): string {
+  const h = createHash("sha256").update(`supervisor:${acaoId}:${efeito}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${((parseInt(h[16]!, 16) & 0x3) | 0x8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+interface NegocioComVersao {
+  pipeline_id: string;
+  stage_id: string;
+  status: string;
+  contact_id: string | null;
+  custom_fields: Record<string, unknown> | null;
+  tags: string[] | null;
+  value_cents: number | null;
+  owner_user_id: string | null;
+  updated_at: string;
+}
+
+const COLUNAS_DO_NEGOCIO = "id, organization_id, pipeline_id, stage_id, status, contact_id, custom_fields, tags, value_cents, owner_user_id, updated_at";
+
+/**
+ * Escrita em `crm_leads` com TRAVA OTIMISTA pela versão da linha (achado B).
+ *
+ * `updated_at` é avançado pelo trigger oficial `trg_crm_leads_updated_at` em
+ * TODO update — é a mesma trava que a movimentação de etapa do produto usa.
+ * A escrita só acontece se a linha ainda é a que foi lida; se alguém mexeu no
+ * meio, relê e recalcula sobre o estado NOVO (até 3 vezes). Assim:
+ *   - mudança humana no MESMO dado → o cálculo vê e devolve `conflito_humano`;
+ *   - mudança humana em OUTRO campo/tag → é preservada (o patch é refeito em cima dela);
+ *   - zero linhas afetadas nunca vira "aplicado".
+ */
+async function comTravaDoNegocio(
+  admin: SupabaseClient,
+  org: string,
+  leadId: string,
+  calcula: (L: NegocioComVersao) => { patch: Record<string, unknown>; feito?: boolean } | { pula: string } | { pronto: string },
+): Promise<{ ok: true; antes: NegocioComVersao; patch: Record<string, unknown> } | { ok: false; resultado: ResultadoDaExecucao }> {
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    const { data, error } = await admin.from("crm_leads").select(COLUNAS_DO_NEGOCIO).eq("organization_id", org).eq("id", leadId).maybeSingle();
+    if (error) return { ok: false, resultado: { status: "failed", detalhe: error.message } };
+    const L = data as NegocioComVersao | null;
+    if (!L) return { ok: false, resultado: { status: "skipped", detalhe: "negocio_inexistente" } };
+    if (L.status !== "open") return { ok: false, resultado: { status: "skipped", detalhe: "negocio_fechado" } };
+    const c = calcula(L);
+    if ("pula" in c) return { ok: false, resultado: { status: "skipped", detalhe: c.pula } };
+    if ("pronto" in c) return { ok: false, resultado: { status: "applied", detalhe: c.pronto } };
+    const { data: rows, error: upErr } = await admin
+      .from("crm_leads")
+      .update(c.patch)
+      .eq("organization_id", org)
+      .eq("id", leadId)
+      .eq("updated_at", L.updated_at)
+      .eq("status", "open")
+      .select("id");
+    if (upErr) return { ok: false, resultado: { status: "failed", detalhe: upErr.message } };
+    if ((rows ?? []).length > 0) return { ok: true, antes: L, patch: c.patch };
+    // a linha mudou entre a leitura e a escrita: relê e recalcula
+  }
+  return { ok: false, resultado: { status: "skipped", detalhe: "conflito_concorrente" } };
+}
+
+const igual = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /** Metadata do evento emitido por uma ação do Supervisor. */
 export function metadataDoEvento(quem: QuemExecuta): Record<string, unknown> {
@@ -96,6 +167,18 @@ async function timeline(
   payload: Record<string, unknown>,
 ): Promise<void> {
   if (!acao.lead_id) return;
+  if (quem.retomada) {
+    // A execução interrompida pode já ter gravado a linha do tempo.
+    const { data: ja } = await admin
+      .from("crm_lead_activities")
+      .select("id")
+      .eq("organization_id", acao.organization_id)
+      .eq("source_module", "supervisor")
+      .eq("source_id", acao.id)
+      .eq("type", type)
+      .limit(1);
+    if ((ja ?? []).length > 0) return;
+  }
   const r = await emitLeadActivity(admin, {
     organizationId: acao.organization_id,
     leadId: acao.lead_id,
@@ -152,6 +235,8 @@ export async function executaAcao(
       case "move_stage": {
         const de = String(acao.before?.stage_id ?? "");
         const para = String(acao.after.stage_id ?? "");
+        // Retomada: a etapa já está no destino — o movimento aconteceu antes da queda.
+        if (quem.retomada && L.stage_id === para) return { status: "applied", detalhe: "ja_no_destino" };
         if (L.stage_id !== de) return { status: "skipped", detalhe: "conflito_humano" };
         const { data: rows, error } = await admin
           .from("crm_leads")
@@ -191,14 +276,17 @@ export async function executaAcao(
 
       case "set_field": {
         const key = String(acao.after.key);
-        const atual = (L.custom_fields ?? {})[key];
         const visto = acao.before?.valor ?? null;
-        if (JSON.stringify(atual ?? null) !== JSON.stringify(visto)) {
-          return { status: "skipped", detalhe: "conflito_humano" };
-        }
-        const novo = { ...(L.custom_fields ?? {}), [key]: acao.after.valor };
-        const { error } = await admin.from("crm_leads").update({ custom_fields: novo }).eq("organization_id", org).eq("id", leadId);
-        if (error) return { status: "failed", detalhe: error.message };
+        const r = await comTravaDoNegocio(admin, org, leadId, (N) => {
+          const atual = (N.custom_fields ?? {})[key];
+          if (quem.retomada && igual(atual, acao.after.valor)) return { pronto: "ja_aplicado" };
+          // O MESMO campo mudou desde a leitura: a decisão humana vence.
+          if (!igual(atual, visto)) return { pula: "conflito_humano" };
+          // O patch é refeito sobre o estado LIDO AGORA: outro campo editado no
+          // meio não é sobrescrito.
+          return { patch: { custom_fields: { ...(N.custom_fields ?? {}), [key]: acao.after.valor } } };
+        });
+        if (!r.ok) return r.resultado;
         await timeline(admin, acao, quem, "lead_edited", `${acao.reason}${citacoes(acao)}`, {
           campo: key,
           de: visto,
@@ -209,14 +297,18 @@ export async function executaAcao(
 
       case "set_value": {
         const visto = (acao.before?.value_cents as number | null) ?? null;
-        if ((L.value_cents ?? null) !== visto) return { status: "skipped", detalhe: "conflito_humano" };
-        const q = admin.from("crm_leads").update({ value_cents: acao.after.value_cents }).eq("organization_id", org).eq("id", leadId);
-        const { error } = await (visto === null ? q.is("value_cents", null) : q.eq("value_cents", visto));
-        if (error) return { status: "failed", detalhe: error.message };
+        const novo = (acao.after.value_cents as number | null) ?? null;
+        // Condicional E conferida: zero linhas afetadas nunca é "aplicado" (achado B).
+        const r = await comTravaDoNegocio(admin, org, leadId, (N) => {
+          if (quem.retomada && (N.value_cents ?? null) === novo) return { pronto: "ja_aplicado" };
+          if ((N.value_cents ?? null) !== visto) return { pula: "conflito_humano" };
+          return { patch: { value_cents: novo } };
+        });
+        if (!r.ok) return r.resultado;
         await timeline(admin, acao, quem, "lead_edited", `${acao.reason}${citacoes(acao)}`, {
           campo: "value_cents",
           de: visto,
-          para: acao.after.value_cents,
+          para: novo,
         });
         return { status: "applied" };
       }
@@ -224,14 +316,21 @@ export async function executaAcao(
       case "add_tag":
       case "remove_tag": {
         const tag = String(acao.after.tag);
-        const tags = L.tags ?? [];
-        const tem = tags.some((t) => t.toLowerCase() === tag.toLowerCase());
-        if (acao.kind === "add_tag" && tem) return { status: "skipped", detalhe: "ja_aplicada" };
-        if (acao.kind === "remove_tag" && !tem) return { status: "skipped", detalhe: "ja_removida" };
-        const novas = acao.kind === "add_tag" ? [...tags, tag] : tags.filter((t) => t.toLowerCase() !== tag.toLowerCase());
-        const { error } = await admin.from("crm_leads").update({ tags: novas }).eq("organization_id", org).eq("id", leadId);
-        if (error) return { status: "failed", detalhe: error.message };
-        await timeline(admin, acao, quem, "lead_edited", `${acao.reason}${citacoes(acao)}`, { tags_de: tags, tags_para: novas });
+        const mesma = (t: string) => t.toLowerCase() === tag.toLowerCase();
+        let antes: string[] = [];
+        let novas: string[] = [];
+        const r = await comTravaDoNegocio(admin, org, leadId, (N) => {
+          // A lista é refeita sobre as tags LIDAS AGORA: tag que o vendedor
+          // pôs ou tirou no meio continua como ele deixou.
+          antes = N.tags ?? [];
+          const tem = antes.some(mesma);
+          if (acao.kind === "add_tag" && tem) return quem.retomada ? { pronto: "ja_aplicada" } : { pula: "ja_aplicada" };
+          if (acao.kind === "remove_tag" && !tem) return quem.retomada ? { pronto: "ja_removida" } : { pula: "ja_removida" };
+          novas = acao.kind === "add_tag" ? [...antes, tag] : antes.filter((t) => !mesma(t));
+          return { patch: { tags: novas } };
+        });
+        if (!r.ok) return r.resultado;
+        await timeline(admin, acao, quem, "lead_edited", `${acao.reason}${citacoes(acao)}`, { tags_de: antes, tags_para: novas });
         if (acao.kind === "add_tag") {
           // Mesmo contrato das rotas (só quando adicionou): quem ouve tag vê a
           // tag do Supervisor — com a marca de "sem disparo" quando for o caso.
@@ -250,6 +349,11 @@ export async function executaAcao(
 
       case "create_task": {
         const titulo = String(acao.after.title);
+        const taskId = idDoEfeito(acao.id, "tarefa");
+        if (quem.retomada) {
+          const { data: ja } = await admin.from("crm_tasks").select("id").eq("organization_id", org).eq("id", taskId).maybeSingle();
+          if (ja) return { status: "applied", detalhe: taskId };
+        }
         // Dedup no momento da escrita também: a tarefa pode ter sido criada à
         // mão entre a leitura e agora.
         const { data: abertas } = await admin
@@ -279,6 +383,8 @@ export async function executaAcao(
         const { data: t, error } = await admin
           .from("crm_tasks")
           .insert({
+            // Id derivado da ação: retomada concorrente bate na PK em vez de duplicar.
+            id: taskId,
             organization_id: org,
             title: titulo.slice(0, 255),
             description: descricao.slice(0, 5000),
@@ -292,6 +398,7 @@ export async function executaAcao(
           })
           .select("id")
           .single();
+        if (error?.code === "23505") return { status: "applied", detalhe: taskId };
         if (error) return { status: "failed", detalhe: error.message };
         await timeline(admin, acao, quem, "task_created", titulo.slice(0, 200), {
           task_id: (t as { id: string }).id,
@@ -318,7 +425,9 @@ export async function executaAcao(
           actorUserId: quem.aprovadorUserId,
           requestId: quem.requestId,
         });
-        if (!r.ok) return { status: r.status >= 500 ? "failed" : "skipped", detalhe: r.code };
+        // Na retomada, "já está em follow-up" NÃO vira aplicado: não dá para
+        // provar que a inscrição ativa é a desta ação.
+        if (!r.ok) return { status: r.status >= 500 ? "failed" : "skipped", detalhe: quem.retomada && r.code === "conflict" ? "ja_em_follow_up" : r.code };
         await timeline(admin, acao, quem, "note", `Follow-up iniciado pelo Supervisor Comercial: ${acao.reason}`, {
           pointer_id: acao.after.pointer_id,
         });
@@ -328,27 +437,59 @@ export async function executaAcao(
       case "update_qualification": {
         if (!L.contact_id) return { status: "skipped", detalhe: "sem_contato" };
         const nova = (acao.after.qualification ?? {}) as Record<string, string>;
-        const { data: st, error: stErr } = await admin
-          .from("lead_state")
-          .select("id, qualification")
-          .eq("organization_id", org)
-          .eq("contact_id", L.contact_id)
-          .maybeSingle();
-        if (stErr) return { status: "failed", detalhe: stErr.message };
-        const atual = ((st as { qualification: Record<string, string> } | null)?.qualification ?? {}) as Record<string, string>;
-        const merged = { ...atual, ...nova };
-        const { error } = st
-          ? await admin.from("lead_state").update({ qualification: merged, updated_at: new Date().toISOString() })
-              .eq("organization_id", org).eq("contact_id", L.contact_id)
-          : await admin.from("lead_state").insert({ organization_id: org, contact_id: L.contact_id, qualification: merged });
-        if (error) return { status: "failed", detalhe: error.message };
-        await timeline(admin, acao, quem, "lead_edited", `${acao.reason}${citacoes(acao)}`, { qualificacao: nova });
+        const vista = ((acao.before?.qualification ?? {}) as Record<string, string>) ?? {};
+        // Compare-and-set sobre o próprio JSON (achado B): `lead_state` não tem
+        // trigger de versão. Grava só se a qualificação ainda é a que foi lida;
+        // senão relê e refaz a mescla sobre o estado novo.
+        let aplicada: Record<string, string> = {};
+        let gravou = false;
+        for (let tentativa = 0; tentativa < 3 && !gravou; tentativa++) {
+          const { data: st, error: stErr } = await admin
+            .from("lead_state")
+            .select("id, qualification")
+            .eq("organization_id", org)
+            .eq("contact_id", L.contact_id)
+            .maybeSingle();
+          if (stErr) return { status: "failed", detalhe: stErr.message };
+          const linha = st as { qualification: Record<string, string> | null } | null;
+          const atual = (linha?.qualification ?? {}) as Record<string, string>;
+          // A chave que mudou desde a leitura do Supervisor é decisão de outra
+          // pessoa (ou de outra leitura): ela vence.
+          aplicada = Object.fromEntries(
+            Object.entries(nova).filter(([k]) => igual(atual[k], vista[k]) || (quem.retomada && igual(atual[k], nova[k]))),
+          );
+          const mudancas = Object.entries(aplicada).filter(([k, v]) => !igual(atual[k], v));
+          if (Object.keys(aplicada).length === 0) return { status: "skipped", detalhe: "conflito_humano" };
+          if (mudancas.length === 0) {
+            if (quem.retomada) return { status: "applied", detalhe: "ja_aplicado", recalcularScore: true };
+            return { status: "skipped", detalhe: "sem_mudanca" };
+          }
+          const merged = { ...atual, ...aplicada };
+          if (linha) {
+            const { data: rows, error } = await admin
+              .from("lead_state")
+              .update({ qualification: merged, updated_at: new Date().toISOString() })
+              .eq("organization_id", org)
+              .eq("contact_id", L.contact_id)
+              .eq("qualification", JSON.stringify(linha.qualification ?? {}))
+              .select("id");
+            if (error) return { status: "failed", detalhe: error.message };
+            gravou = (rows ?? []).length > 0;
+          } else {
+            const { error } = await admin.from("lead_state").insert({ organization_id: org, contact_id: L.contact_id, qualification: merged });
+            if (error && error.code !== "23505") return { status: "failed", detalhe: error.message };
+            gravou = !error;
+          }
+        }
+        if (!gravou) return { status: "skipped", detalhe: "conflito_concorrente" };
+        await timeline(admin, acao, quem, "lead_edited", `${acao.reason}${citacoes(acao)}`, { qualificacao: aplicada });
         return { status: "applied", recalcularScore: true };
       }
 
       case "record_signals": {
         if (!L.contact_id) return { status: "skipped", detalhe: "sem_contato" };
         const { error } = await admin.from("lead_checkpoints").insert({
+          id: idDoEfeito(acao.id, "checkpoint"),
           organization_id: org,
           contact_id: L.contact_id,
           conversation_id: acao.conversation_id,
@@ -357,6 +498,7 @@ export async function executaAcao(
           next_action: (acao.after.next_action as string | null) ?? null,
           rolling_summary: String(acao.after.rolling_summary ?? "").slice(0, 2000),
         });
+        if (error?.code === "23505") return { status: "applied", detalhe: "ja_registrado", recalcularScore: true };
         if (error) return { status: "failed", detalhe: error.message };
         return { status: "applied", recalcularScore: true };
       }
@@ -379,7 +521,8 @@ export async function executaAcao(
             payloadNaTimeline: { supervisor_action_id: acao.id },
           },
         );
-        return r.jaEstava ? { status: "skipped", detalhe: "ja_estava" } : { status: "applied" };
+        if (r.jaEstava) return quem.retomada ? { status: "applied", detalhe: "ja_estava" } : { status: "skipped", detalhe: "ja_estava" };
+        return { status: "applied" };
       }
 
       case "resolve_lead":
@@ -393,28 +536,41 @@ export async function executaAcao(
   }
 }
 
-/** Grava o desfecho da execução, audita e recalcula o score quando os sinais mudaram. */
+/**
+ * Grava o desfecho da execução, audita e recalcula o score quando os sinais mudaram.
+ *
+ * Só fecha ação que está em `executing` (achado D): quem a reivindicou e
+ * executou é quem a conclui. Se outra execução (uma retomada concorrente) já
+ * fechou, esta não regrava nem audita de novo.
+ */
 export async function concluiAcao(
   admin: SupabaseClient,
   pool: pg.Pool | null,
   acao: AcaoGravada,
   quem: QuemExecuta,
   r: ResultadoDaExecucao,
-): Promise<void> {
+): Promise<boolean> {
   const status = r.status === "applied" ? (quem.aprovadorUserId ? "approved" : "applied") : r.status;
-  await admin
+  const { data: fechadas, error: fechErr } = await admin
     .from("supervisor_actions")
     .update({
       status,
       result_detail: r.detalhe ?? null,
-      decided_by: quem.aprovadorUserId,
-      decided_at: quem.aprovadorUserId ? new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
     })
     .eq("organization_id", acao.organization_id)
-    .eq("id", acao.id);
+    .eq("id", acao.id)
+    .eq("status", "executing")
+    .select("id");
+  if (fechErr || (fechadas ?? []).length === 0) {
+    logger.warn("[supervisor] ação não estava mais em execução ao concluir (outra execução fechou)", {
+      action_id: acao.id,
+      error: fechErr?.message,
+    });
+    return false;
+  }
 
-  if (r.status !== "applied") return;
+  if (r.status !== "applied") return true;
 
   void audit({
     action: quem.aprovadorUserId ? "supervisor.action_approved" : "supervisor.action_applied",
@@ -469,4 +625,5 @@ export async function concluiAcao(
       });
     }
   }
+  return true;
 }

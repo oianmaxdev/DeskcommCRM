@@ -88,7 +88,35 @@
 
 ## E. Homologação
 
-<!-- RESULTADOS -->
+Rodadas locais em 2026-11-26 (WSL2, 9 GB, 4 núcleos), na branch `distro/integracao/1.126.0`.
+
+| Gate | Comando | Resultado |
+|---|---|---|
+| Suíte unitária completa | `pnpm test:unit` | 4.183 arquivos / 49.286 testes: **7 arquivos reprovados**. Rodados sozinhos, 2 eram tempo estourado (passaram); **5 eram guardas reais do upstream** que a Feature C não cumpria (cron, organização parada, varredura de anon, espanhol, leitores de mídia) — **corrigidas** (`d0390e9a6`) e re-verificadas: 50 arquivos / 522 testes. **A suíte inteira não foi rodada de novo depois da correção** |
+| Banco completo | `pnpm test:db` (`CONFERENCIA_KIT_RELEASE=v1.126.0`) | 726 arquivos / 6.057 testes: baseline install e update OK; conferência do kit OK (212 regras, inclusive com o `update.sh` da v1.126.0 e da v1.63.0); **2 reprovados**: catálogo de LGPD (tabelas do Supervisor sem decisão — **corrigido** com gatilho no banco, `d0390e9a6`, **não re-verificado: o Docker caiu**) e `metricas-cortam-pela-janela` (custo medido de uma função oficial que a Feature C não toca; provável efeito de carga, **não re-verificado**) |
+| Invariantes do Supervisor | `pnpm test:db tests/invariants/supervisor-*` | 32 testes passaram (fila justa e isolamento), antes das últimas mudanças de LGPD |
+| Testes de shell / kit | `pnpm test:shell` | **passou** (exit 0) |
+| Typecheck | `pnpm typecheck` | **não roda nesta máquina** (estoura 6 GB). Rodado restrito a todo arquivo que a distribuição toca: 2 erros achados e corrigidos (`52e89164e`), depois limpo. O completo depende do CI |
+| Lint | `eslint` nos arquivos tocados | limpo |
+| Testes do Supervisor | `vitest lib/supervisor` | todos passam (fila, concorrência, retomada, omissão, diário, diagnóstico, PDF) |
+| Workflows | actionlint | sem erros |
+| E2E | `tests/e2e/supervisor-comercial.spec.ts` | escrito e registrado; **não executado** (precisa do CI ou de `pnpm e2e:env && pnpm e2e:build` locais) |
+| Build das imagens | `publish-image.yml` | **não executado**: Actions do fork desligadas |
+| Prova real no PostgREST | compare-and-set em jsonb | provado (casa com o atual, recusa o antigo) |
+
+**Simulações da distribuição (10 pedidas):** nenhuma executada de ponta a ponta — dependem das
+imagens publicadas. Cobertura parcial pelos testes de shell oficiais que passaram (preflight e
+rollback da atualização, identidade de imagem em runtime, release publicada ≠ maior tag, isolamento
+do kit) e pelos invariantes de update do baseline. A transição oficial → distribuição foi analisada
+no código (o pré-voo usa o `IMG_NS` do kit em disco) e o runbook a contorna, mas **não foi simulada**.
+
+**Bloqueadores para produção**
+1. Actions do fork desligadas (sem CI, sem imagens, sem release).
+2. Typecheck completo, suíte completa e `test:db` completo de novo sobre `52e89164e`, no CI.
+3. E2E do Supervisor e build das 4 imagens, no CI.
+4. Simulação da transição 1.110.0 → `v1.126.1001` com o kit antigo, em ambiente isolado.
+5. Pacotes do GHCR públicos.
+6. Confirmar por SSH o `.env` (`REVERSE_PROXY`, host do banco) e os volumes (runbook §1).
 
 ## F. Para a sua operação
 

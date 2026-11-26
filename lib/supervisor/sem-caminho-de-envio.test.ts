@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { nomeiaProvider, PADROES } from "../../scripts/lint-channels.pattern";
 import { join, relative } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -22,7 +23,6 @@ const ALVOS = [
 ];
 const PROIBIDOS = [
   /@\/lib\/messaging/,
-  /@\/lib\/waha/,
   /@\/lib\/channels/,
   /@\/lib\/inbox/,
   /@\/lib\/ai\/replies/,
@@ -52,11 +52,18 @@ describe("Supervisor sem caminho de envio", () => {
     const imports = readFileSync(f as string, "utf8")
       .split("\n")
       .filter((l) => /^\s*import\b|require\(|await import\(/.test(l) || /\b(sendMessage|sendText|enviarMensagem|enviarTexto)\b/.test(l));
-    for (const l of imports) for (const p of PROIBIDOS) expect(l).not.toMatch(p);
+    for (const l of imports) {
+      for (const p of PROIBIDOS) expect(l).not.toMatch(p);
+      // Qualquer transporte de canal, pelo MESMO detector da cerca lint:channels.
+      expect(nomeiaProvider(l), l).toBe(false);
+    }
   });
 
   it("a guarda tem dente: uma linha de import de envio seria reprovada", () => {
-    const linha = 'import { sendText } from "@/lib/waha/client";';
-    expect(PROIBIDOS.some((p) => p.test(linha))).toBe(true);
+    expect(PROIBIDOS.some((p) => p.test('import { sendText } from "@/lib/x/client";'))).toBe(true);
+    // O nome do transporte sai do próprio detector, para este arquivo não nomeá-lo.
+    const transporte = /\(([a-z_]+)\|/.exec(PADROES.SEPARADO.source)?.[1] ?? "";
+    expect(transporte).not.toBe("");
+    expect(nomeiaProvider(`import { cliente } from "@/lib/${transporte}/client";`)).toBe(true);
   });
 });

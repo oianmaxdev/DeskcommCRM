@@ -224,6 +224,28 @@ export interface AcessoMcpRow {
   revogado_em?: string | null;
 }
 
+/**
+ * O que o Supervisor Comercial (distribuição oianmaxdev, migration 5001) leu e
+ * fez a partir das conversas do titular. A anonimização redige as duas tabelas
+ * (gatilho fn_supervisor_redigir_ao_anonimizar), e o que se apaga a pedido dele
+ * é o que se entrega a pedido dele.
+ */
+export interface SupervisorLeituraRow {
+  id: string;
+  status: string;
+  summary: string;
+  created_at: string;
+}
+
+export interface SupervisorAcaoRow {
+  id: string;
+  kind: string;
+  status: string;
+  reason: string;
+  evidence: unknown;
+  created_at: string;
+}
+
 export interface CheckpointRow {
   id: string;
   rolling_summary: string;
@@ -823,6 +845,8 @@ export interface ExportPayload {
   orders: OrderRow[];
   activities: ActivityRow[];
   checkpoints: CheckpointRow[];
+  supervisor_leituras: SupervisorLeituraRow[];
+  supervisor_acoes: SupervisorAcaoRow[];
   /** Opcionais: payload gerado antes da 9095 não os tem. */
   mcp_pedidos_de_acesso?: AcessoMcpRow[];
   mcp_acessos?: AcessoMcpRow[];
@@ -1778,6 +1802,44 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
     } else if (data) {
       conferirTeto("activities", data, 500);
       activities = data;
+    }
+  }
+
+  // Supervisor Comercial — contact_id direto em supervisor_runs/supervisor_actions.
+  let supervisorLeituras: SupervisorLeituraRow[] = [];
+  let supervisorAcoes: SupervisorAcaoRow[] = [];
+  if (contactId) {
+    const { data, error } = await admin
+      .from("supervisor_runs")
+      .select("id, status, summary, created_at")
+      .eq("organization_id", organizationId)
+      .eq("contact_id", contactId)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (error) {
+      logger.warn("[lgpd-export-worker] supervisor_runs load failed", {
+        request_id: requestId,
+        error: error.message,
+      });
+    } else if (data) {
+      conferirTeto("supervisor_leituras", data, 500);
+      supervisorLeituras = data;
+    }
+    const acoes = await admin
+      .from("supervisor_actions")
+      .select("id, kind, status, reason, evidence, created_at")
+      .eq("organization_id", organizationId)
+      .eq("contact_id", contactId)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (acoes.error) {
+      logger.warn("[lgpd-export-worker] supervisor_actions load failed", {
+        request_id: requestId,
+        error: acoes.error.message,
+      });
+    } else if (acoes.data) {
+      conferirTeto("supervisor_acoes", acoes.data, 500);
+      supervisorAcoes = acoes.data;
     }
   }
 
@@ -2776,6 +2838,8 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
     orders,
     activities,
     checkpoints,
+    supervisor_leituras: supervisorLeituras,
+    supervisor_acoes: supervisorAcoes,
     mcp_pedidos_de_acesso: mcpPedidos,
     mcp_acessos: mcpAcessos,
     appointments,
@@ -2978,6 +3042,8 @@ function emptyPayload(
     orders: [],
     activities: [],
     checkpoints: [],
+    supervisor_leituras: [],
+    supervisor_acoes: [],
     mcp_pedidos_de_acesso: [],
     mcp_acessos: [],
     appointments: [],

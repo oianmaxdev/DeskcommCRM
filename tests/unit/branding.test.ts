@@ -208,12 +208,6 @@ type EntradaDeMarca = {
 };
 
 const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
-  "lib/ai/pontos/pkce-da-assinatura.ts": {
-    categoria: "PROTOCOLO",
-    motivo:
-      "`agent_name_hint` identifica o aplicativo auto-hospedado durante a autorização SIWC da OpenAI; não é o nome apresentado nas telas do CRM. O fluxo de login depende deste identificador de produto. (Entrada idêntica à do upstream, #1639.)",
-    marcas: ["deskcommcrm"],
-  },
   // ─── PROTOCOLO — contrato de fio. Renomear quebra integração alheia. ───
   "lib/ai/pontos/pkce-da-assinatura.ts": {
     categoria: "PROTOCOLO",

@@ -2,8 +2,9 @@
 
 > **Status:** preparado, **não executado**. Nenhum passo abaixo foi rodado na VPS de produção.
 > A implantação depende de autorização explícita do dono, e da conclusão dos pré-requisitos da §0.
-> Os dados da VPS marcados com **[confirmar]** vieram de uma leitura anterior e ainda precisam ser
-> conferidos pelo MCP da Hostinger (só leitura) ou por SSH.
+> Os dados da VPS da §1 foram lidos pelo MCP da Hostinger (só leitura) em 2026-11-26, inclusive o
+> compose e o `.env` do projeto. Os segredos do `.env` **não** são reproduzidos aqui. O que só o SSH
+> alcança está listado no fim da §1.
 
 ## 0. Pré-requisitos (bloqueadores)
 
@@ -28,16 +29,20 @@
 | Recursos | 1 vCPU (~7% de uso médio), 4 GB RAM (~2,5 GB em uso, ~1,5 GB livres), 50 GB disco (~20,8 GB usados, ~29 GB livres) |
 | DeskcommCRM | projeto `deskcommcrm`, `/opt/deskcommcrm/docker-compose.prod.yml`, **1.110.0**: `app`, `worker`, `scheduler` (healthy há 12 dias), `redis:7-alpine`, `serverless-redis-http` (digest fixo), `waha` (`devlikeapro/waha:latest-2026.7.2`) |
 | Memória por serviço | app ~250 MB (limite 768 MB), worker ~195 MB (512 MB), WAHA ~356 MB (1,3 GB), resto < 10 MB |
-| Proxy | o `app` **não publica porta**: é servido pelo Traefik do projeto `n8n` (portas 80/443) — modo `REVERSE_PROXY=traefik` **[confirmar no `.env` por SSH]** |
-| Banco | **não há Postgres na stack do Deskcomm**: o banco é externo (Supabase) **[confirmar o tipo/host por SSH, sem expor a credencial]** |
+| Proxy | o `app` **não publica porta**: é servido pelo Traefik do projeto `n8n` (portas 80/443) — **confirmado no `.env`: `REVERSE_PROXY=traefik`**, rede `n8n_default`, entrypoints `web`/`websecure`, resolver `mytlschallenge` |
+| Banco | **não há Postgres na stack do Deskcomm**: **confirmado: Supabase na nuvem** (pooler `sa-east-1`, porta 5432). O `update.sh` aplica o baseline nele por `SUPABASE_DB_URL`. Backup e restauração dependem do plano do Supabase — o dump do §2.3 é obrigatório |
+| Imagens em uso | `ghcr.io/melgarafael/*:1.110.0` com `*_PULL_POLICY=missing` (fixadas por versão, como manda a doutrina) |
+| Volumes do WAHA | `waha-data` (sessões pareadas) e `waha-media`; nome real com o prefixo do projeto: `deskcommcrm_waha-data` e `deskcommcrm_waha-media` |
+| Chaves SSH na VM | **nenhuma cadastrada** no painel (acesso de root por senha, presumido) |
+| ⚠️ Segurança | o `.env` guarda **`OWNER_PASSWORD` em texto puro** (a senha do dono, usada só no primeiro bootstrap). Recomendado: trocar essa senha no CRM e apagar a linha do `.env`. Fora do escopo desta implantação, mas não deve continuar assim |
 | Outros projetos (fora do escopo, não tocar) | `evolution` (API + Postgres 15 + Redis; **a API publica a porta 8080 em 0.0.0.0** — fora do escopo, mas vale revisar), `n8n` (n8n em 127.0.0.1:5678 + Traefik) |
 | Backups Hostinger | semanais (pontos em 2026-11-15 e 2026-11-22). **Restauram a VM inteira** (inclui Evolution e n8n): não servem para voltar só o CRM |
 | Snapshot | **nenhum** — recomendado criar um imediatamente antes da implantação (com autorização) |
 | Firewall Hostinger | nenhum grupo associado |
 
-O que o MCP não alcança (ler por SSH, §2.1): `REVERSE_PROXY` e o host do banco no `.env`, nomes dos
-volumes, `git remote -v`/`git status` em `/opt/deskcommcrm`, como o agente de atualização está
-agendado (cron/systemd) e onde/quando o `backup.sh` grava.
+O que o MCP não alcança (ler por SSH, §2.1): `git remote -v`/`git status` em `/opt/deskcommcrm`
+(o `checkout` do §3 recusa árvore suja), como o agente de atualização está agendado (cron/systemd)
+— **ele precisa ficar parado durante a janela** — e onde/quando o `backup.sh` grava.
 
 ## 2. Pré-implantação
 
@@ -74,7 +79,7 @@ Guarde a saída: os **digests atuais** são o caminho de volta da aplicação (�
 cd /opt/deskcommcrm
 bash hostgator-setup-kit/backup.sh                       # dump do banco (o mesmo que o update.sh faz)
 sudo tar czf ~/deskcomm-config-$(date +%F).tgz .env docker-compose*.yml   # contém SEGREDOS
-docker run --rm -v deskcommcrm_waha_data:/d -v ~/:/b alpine tar czf /b/waha-sessoes-$(date +%F).tgz -C /d .   # nome do volume [confirmar]
+docker run --rm -v deskcommcrm_waha-data:/d -v ~/:/b alpine tar czf /b/waha-sessoes-$(date +%F).tgz -C /d .
 ```
 
 - Copie o dump e os dois `.tgz` para **fora da VPS** (sua máquina ou um storage privado).

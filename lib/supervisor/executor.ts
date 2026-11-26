@@ -10,7 +10,7 @@
  * humana mais recente vence sempre.
  *
  * ⚠️ NENHUM IMPORT DE ENVIO. Este arquivo (e todo `lib/supervisor/`) não
- * importa nada de `lib/messaging`, `lib/waha`, `lib/channels`, `lib/inbox` nem
+ * importa nada de `lib/messaging`, do transporte de canal, `lib/channels`, `lib/inbox` nem
  * do motor de turno do agente — vigiado por
  * `lib/supervisor/sem-caminho-de-envio.test.ts`. O único efeito que pode
  * terminar numa mensagem é `start_followup`, e ele passa pela inscrição do

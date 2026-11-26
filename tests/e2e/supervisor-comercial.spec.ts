@@ -27,6 +27,7 @@ import { expect, test, type Page } from "./helpers/test";
 import { createClient } from "@supabase/supabase-js";
 
 import { carregarEnvLocal } from "../../scripts/lib/env-de-teste";
+import { loginComoAdmin, type CredsE2E } from "./helpers/login-admin";
 
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 const EVIDENCIA = process.env.E2E_EVIDENCIA ?? path.join(process.cwd(), "evidence/supervisor-comercial");
@@ -150,7 +151,9 @@ test.describe("Supervisor Comercial — pela tela", () => {
   });
 
   test("a porta no menu leva à tela, e a configuração salva liga o Supervisor no funil escolhido", async ({ page }) => {
-    await login(page, creds.users.admin!.email, creds.password);
+    // O admin tem fator TOTP (o seed o cadastra): o helper oficial passa pela
+    // tela de MFA e cobre a re-semeadura no meio da rodada.
+    await loginComoAdmin(page, creds as unknown as CredsE2E);
     await page.goto("/app/analise");
     await page.getByRole("link", { name: /Supervisor Comercial/ }).first().click();
     await page.waitForURL(/\/app\/analise\/supervisor/);

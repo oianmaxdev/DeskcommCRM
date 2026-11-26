@@ -64,6 +64,19 @@ const DIR = join(process.cwd(), ".github/workflows");
  * que desliga um job de entrega fica visível em code review.
  */
 const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string }> = {
+  // --- distribuição oianmaxdev: jobs SEM condição (rodam quando disparados) ---
+  "distro-release.yml::release": {
+    condicao: null,
+    efeito: "Cria a release candidata da distribuição. Uma condição aqui faria a release não sair, sem erro.",
+  },
+  "distro-promover.yml::promover": {
+    condicao: null,
+    efeito: "Promove a candidata ao canal que a VPS lê. Uma condição aqui travaria toda promoção em silêncio.",
+  },
+  "distro-acompanhar-upstream.yml::integrar": {
+    condicao: null,
+    efeito: "Prepara a integração de cada release oficial. Uma condição aqui deixaria a distribuição parada na base antiga.",
+  },
   // --- a cadeia que leva o conserto até a VPS ---------------------------------
   "release.yml::abrir-pr-de-release": {
     condicao: "github.event_name == 'workflow_dispatch'",

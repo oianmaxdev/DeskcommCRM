@@ -1,0 +1,143 @@
+# Acompanha as RELEASES ESTÁVEIS do DeskcommCRM oficial e prepara a integração
+# na distribuição oianmaxdev. Não acompanha commits da main oficial.
+#
+# Nova release oficial → branch distro/integracao/<versão> a partir da `main` do
+# fork → `git merge` da tag oficial (merge comum: nenhuma estratégia que
+# descarte um dos lados) →
+#   - sem conflito: commit com a base nova, PR para a `main` e os gates oficiais
+#     disparados na branch (ci, e2e, perf, publish-image em modo PR não roda aqui;
+#     o PR roda tudo quando alguém o atualiza). Publicar continua sendo o
+#     distro-release.yml, à mão, com os gates verdes.
+#   - com conflito: NADA é publicado nem mesclado. A branch recebe só o relatório
+#     (.github/distro/conflito-<versão>.md: arquivos em conflito e o comando para
+#     resolver) e abre-se um PR RASCUNHO para a `main`. A produção continua na
+#     versão atual. (PR e não issue: o fork nasce com Issues desligadas.)
+#
+# Segurança: este workflow NÃO executa código do upstream (nenhum install,
+# build ou script do repositório) — só git. O token tem o mínimo para empurrar a
+# branch, abrir PR/issue e disparar os gates.
+name: distro-acompanhar-upstream
+
+on:
+  schedule:
+    # A cada 6 horas. Para mudar a frequência, edite aqui.
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Integrar esta versão oficial específica (vazio = a última estável)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: distro-acompanhar-upstream
+  cancel-in-progress: false
+
+jobs:
+  integrar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPSTREAM: melgarafael/DeskcommCRM
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Qual release oficial integrar
+        id: alvo
+        run: |
+          set -euo pipefail
+          alvo="${{ inputs.versao }}"
+          [ -n "$alvo" ] || alvo="$(gh release view -R "$UPSTREAM" --json tagName -q .tagName)"
+          [[ "$alvo" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::release oficial inesperada: $alvo"; exit 1; }
+          base="$(tr -d '[:space:]' < .github/distro/base-oficial)"
+          echo "alvo=$alvo" >> "$GITHUB_OUTPUT"
+          echo "branch=distro/integracao/${alvo#v}" >> "$GITHUB_OUTPUT"
+          if [ "$alvo" = "$base" ]; then echo "novo=nao" >> "$GITHUB_OUTPUT"; echo "Já na $base."; exit 0; fi
+          if [ "$(printf '%s\n%s\n' "${base#v}" "${alvo#v}" | sort -V | tail -1)" != "${alvo#v}" ]; then
+            echo "novo=nao" >> "$GITHUB_OUTPUT"; echo "::warning::$alvo é anterior à base $base — ignorado"; exit 0
+          fi
+          if git ls-remote --exit-code --heads origin "distro/integracao/${alvo#v}" >/dev/null; then
+            echo "novo=nao" >> "$GITHUB_OUTPUT"; echo "Integração da $alvo já preparada."; exit 0
+          fi
+          echo "novo=sim" >> "$GITHUB_OUTPUT"
+
+      - name: Merge da release oficial
+        if: steps.alvo.outputs.novo == 'sim'
+        id: merge
+        env:
+          ALVO: ${{ steps.alvo.outputs.alvo }}
+          BRANCH: ${{ steps.alvo.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/${UPSTREAM}.git"
+          git fetch --no-tags upstream "refs/tags/${ALVO}:refs/tags/${ALVO}"
+          git switch -c "$BRANCH"
+          if git merge --no-ff --no-edit -m "merge: release oficial ${ALVO} na distribuição" "refs/tags/${ALVO}"; then
+            printf '%s\n' "$ALVO" > .github/distro/base-oficial
+            git add .github/distro/base-oficial
+            git commit -m "distro: base oficial ${ALVO}"
+            echo "conflito=nao" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --diff-filter=U > /tmp/conflitos.txt
+            git merge --abort
+            echo "conflito=sim" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sem conflito — PR para a main e gates disparados
+        if: steps.merge.outputs.conflito == 'nao'
+        env:
+          ALVO: ${{ steps.alvo.outputs.alvo }}
+          BRANCH: ${{ steps.alvo.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git push origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" \
+            --title "distro: integrar release oficial ${ALVO}" \
+            --body "Merge automático da release oficial [${ALVO}](https://github.com/${UPSTREAM}/releases/tag/${ALVO}) sem conflito textual. **Conflito textual ausente não prova compatibilidade:** revise os gates (disparados nesta branch) e o funcionamento das funcionalidades da distribuição antes de mesclar. Depois do merge, publique com o workflow distro-release."
+          for w in ci.yml e2e.yml perf.yml; do gh workflow run "$w" --ref "$BRANCH"; done
+
+      - name: Com conflito — relatório num PR rascunho, nada publicado
+        if: steps.merge.outputs.conflito == 'sim'
+        env:
+          ALVO: ${{ steps.alvo.outputs.alvo }}
+          BRANCH: ${{ steps.alvo.outputs.branch }}
+        run: |
+          set -euo pipefail
+          relatorio=".github/distro/conflito-${ALVO#v}.md"
+          {
+            echo "# Conflito ao integrar a release oficial ${ALVO}"
+            echo
+            echo "A integração automática parou com conflito. Nada foi mesclado nem publicado; a produção segue na versão atual."
+            echo
+            echo "## Arquivos em conflito"
+            sed 's/^/- `/; s/$/`/' /tmp/conflitos.txt
+            echo
+            echo "## Como resolver"
+            echo '```bash'
+            echo "git fetch origin && git switch ${BRANCH}"
+            echo "git remote add upstream https://github.com/${UPSTREAM}.git 2>/dev/null || true"
+            echo "git fetch upstream tag ${ALVO} && git merge ${ALVO}   # resolva preservando os DOIS lados"
+            echo "git rm ${relatorio}"
+            echo "echo ${ALVO} > .github/distro/base-oficial && git add -A && git commit"
+            echo "git push   # o PR rascunho atualiza e roda os gates"
+            echo '```'
+          } > "$relatorio"
+          git add "$relatorio"
+          git commit -m "distro: conflito ao integrar ${ALVO} (relatório)"
+          git push origin "$BRANCH"
+          gh pr create --draft --base main --head "$BRANCH" \
+            --title "distro: CONFLITO ao integrar release oficial ${ALVO}" \
+            --body-file "$relatorio"

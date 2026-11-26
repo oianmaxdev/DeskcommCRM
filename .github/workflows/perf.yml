@@ -5,6 +5,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Distribuição oianmaxdev: o acompanhamento do upstream (distro-acompanhar-upstream.yml)
+  # dispara os gates na branch candidata — evento do GITHUB_TOKEN só dispara workflow_dispatch.
+  workflow_dispatch: {}
 
 # O GITHUB_TOKEN deste job serve a `actions/checkout` (clone) e a
 # `actions/setup-node` (manifest de `actions/node-versions`, repo público).

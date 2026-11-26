@@ -64,7 +64,6 @@ CRONS="
 * * * * *|45|api/v1/cron/webhook-replay
 */5 * * * *|25|api/v1/cron/storage-redaction?limit=50
 */5 * * * *|25|api/v1/cron/snooze-watcher
-*/5 * * * *|240|api/v1/cron/supervisor-comercial
 */5 * * * *|60|api/v1/cron/handoff-devolucao
 */5 * * * *|60|api/v1/cron/rodizio-devolucao
 # A FOTO GUARDADA SEM DESCRIÇÃO (MEDIA_VISION_WITHOUT_READER=defer). De 5 em 5
@@ -196,6 +195,9 @@ CRONS="
 # catalogo_do_feed (lib/cron/piso-ocioso.ts) faz a batida sair antes de
 # qualquer leitura no banco.
 25 */2 * * *|120|api/v1/cron/catalog-feed-sync
+# DISTRIBUIÇÃO oianmaxdev — Supervisor Comercial (Feature C). No FIM da lista de
+# propósito: não desloca as linhas que a documentação oficial cita por número.
+*/5 * * * *|240|api/v1/cron/supervisor-comercial
 "
 
 # CRONTAB_PATH é ponto de injeção do teste (tests/shell/scheduler-entrypoint.test.sh).

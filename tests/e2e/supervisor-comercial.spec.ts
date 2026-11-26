@@ -63,9 +63,11 @@ async function captura(page: Page, nome: string): Promise<void> {
   await page.screenshot({ path: path.join(EVIDENCIA, `${nome}.png`), fullPage: true });
 }
 
-async function contar(tabela: string, filtro: (q: ReturnType<typeof admin.from>) => unknown = (q) => q): Promise<number> {
-  const q = admin.from(tabela).select("id", { count: "exact", head: true }).eq("organization_id", creds.org_id);
-  const { count, error } = await (filtro(q) as typeof q);
+async function contar(tabela: string): Promise<number> {
+  const { count, error } = await admin
+    .from(tabela)
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", creds.org_id);
   if (error) throw new Error(`${tabela}: ${error.message}`);
   return count ?? 0;
 }

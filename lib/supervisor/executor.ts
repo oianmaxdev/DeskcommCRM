@@ -437,7 +437,7 @@ export async function executaAcao(
       case "update_qualification": {
         if (!L.contact_id) return { status: "skipped", detalhe: "sem_contato" };
         const nova = (acao.after.qualification ?? {}) as Record<string, string>;
-        const vista = ((acao.before?.qualification ?? {}) as Record<string, string>) ?? {};
+        const vista = (acao.before?.qualification ?? {}) as Record<string, string>;
         // Compare-and-set sobre o próprio JSON (achado B): `lead_state` não tem
         // trigger de versão. Grava só se a qualificação ainda é a que foi lida;
         // senão relê e refaz a mescla sobre o estado novo.

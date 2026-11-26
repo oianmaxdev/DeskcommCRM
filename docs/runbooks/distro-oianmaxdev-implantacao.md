@@ -20,15 +20,24 @@
    e `deskcomm-voice-agent`. A VPS puxa anonimamente.
 5. **Restauração testada** num ambiente isolado (§2.4).
 
-## 1. O que se sabe da VPS
+## 1. A VPS — confirmado pelo MCP da Hostinger em 2026-11-26 (só leitura)
 
 | Item | Valor |
 |---|---|
-| Provedor / plano | Hostinger KVM 1 — 1 vCPU, 4 GB RAM, 50 GB, Ubuntu 24.04, ID `1653422` **[confirmar]** |
-| Instalação | `/opt/deskcommcrm`, `docker-compose.prod.yml`, versão **1.110.0** (imagens `ghcr.io/melgarafael/*:1.110.0`) **[confirmar]** |
-| Proxy | Traefik do n8n (`/docker/n8n`) nas portas 80/443 → o `.env` deve ter `REVERSE_PROXY=traefik` **[confirmar]** |
-| Banco | não há Supabase na stack local; hipótese: Supabase externo **[confirmar a origem de `SUPABASE_DB_URL` sem expor a credencial]** |
-| Outros serviços (fora do escopo, não tocar) | Evolution API (`/docker/evolution`), n8n + Traefik (`/docker/n8n`) |
+| VM | Hostinger KVM 1, ID `1653422`, `srv1653422.hstgr.cloud`, Ubuntu 24.04 (template "Ubuntu 24.04 with n8n"), ligada há 39 dias |
+| Recursos | 1 vCPU (~7% de uso médio), 4 GB RAM (~2,5 GB em uso, ~1,5 GB livres), 50 GB disco (~20,8 GB usados, ~29 GB livres) |
+| DeskcommCRM | projeto `deskcommcrm`, `/opt/deskcommcrm/docker-compose.prod.yml`, **1.110.0**: `app`, `worker`, `scheduler` (healthy há 12 dias), `redis:7-alpine`, `serverless-redis-http` (digest fixo), `waha` (`devlikeapro/waha:latest-2026.7.2`) |
+| Memória por serviço | app ~250 MB (limite 768 MB), worker ~195 MB (512 MB), WAHA ~356 MB (1,3 GB), resto < 10 MB |
+| Proxy | o `app` **não publica porta**: é servido pelo Traefik do projeto `n8n` (portas 80/443) — modo `REVERSE_PROXY=traefik` **[confirmar no `.env` por SSH]** |
+| Banco | **não há Postgres na stack do Deskcomm**: o banco é externo (Supabase) **[confirmar o tipo/host por SSH, sem expor a credencial]** |
+| Outros projetos (fora do escopo, não tocar) | `evolution` (API + Postgres 15 + Redis; **a API publica a porta 8080 em 0.0.0.0** — fora do escopo, mas vale revisar), `n8n` (n8n em 127.0.0.1:5678 + Traefik) |
+| Backups Hostinger | semanais (pontos em 2026-11-15 e 2026-11-22). **Restauram a VM inteira** (inclui Evolution e n8n): não servem para voltar só o CRM |
+| Snapshot | **nenhum** — recomendado criar um imediatamente antes da implantação (com autorização) |
+| Firewall Hostinger | nenhum grupo associado |
+
+O que o MCP não alcança (ler por SSH, §2.1): `REVERSE_PROXY` e o host do banco no `.env`, nomes dos
+volumes, `git remote -v`/`git status` em `/opt/deskcommcrm`, como o agente de atualização está
+agendado (cron/systemd) e onde/quando o `backup.sh` grava.
 
 ## 2. Pré-implantação
 
@@ -56,6 +65,10 @@ Guarde a saída: os **digests atuais** são o caminho de volta da aplicação (�
 - O Supervisor nasce **desligado** em todas as organizações (§6).
 
 ### 2.3 Backup
+
+0. **Snapshot da VM** pelo hPanel ou API da Hostinger, minutos antes da janela (a VM não tem nenhum
+   hoje; criar um novo substitui o anterior). É a volta mais rápida para o estado inteiro da VM — e
+   também volta n8n e Evolution, então é só para desastre.
 
 ```bash
 cd /opt/deskcommcrm

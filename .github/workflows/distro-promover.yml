@@ -1,0 +1,38 @@
+# Promove uma release CANDIDATA da distribuição ao canal de produção.
+#
+# É o único passo que faz uma VPS ver a versão: o atualizador lê
+# `releases/latest`, e prerelease não conta. Rodar este workflow é a aprovação
+# humana. O ambiente `producao` permite exigir revisor (Settings → Environments).
+name: distro-promover
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão candidata a promover (ex.: v1.126.1001)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  promover:
+    runs-on: ubuntu-latest
+    environment: producao
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSAO: ${{ inputs.versao }}
+    steps:
+      - name: A candidata existe, é prerelease e tem as notas de gates
+        run: |
+          set -euo pipefail
+          [[ "$VERSAO" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::versão inválida"; exit 1; }
+          info="$(gh release view "$VERSAO" -R "$GITHUB_REPOSITORY" --json isPrerelease,isDraft,body)"
+          [ "$(jq -r .isDraft <<<"$info")" = false ] || { echo "::error::release em rascunho"; exit 1; }
+          [ "$(jq -r .isPrerelease <<<"$info")" = true ] || { echo "::error::$VERSAO não é candidata (já promovida?)"; exit 1; }
+          jq -r .body <<<"$info" | grep -q "exigidos no commit: sim" || { echo "::error::a candidata foi publicada SEM os gates oficiais; refaça a release com os gates verdes"; exit 1; }
+      - name: Promove
+        run: gh release edit "$VERSAO" -R "$GITHUB_REPOSITORY" --prerelease=false --latest

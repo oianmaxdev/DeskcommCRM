@@ -64,15 +64,32 @@ const DIR = join(process.cwd(), ".github/workflows");
  * que desliga um job de entrega fica visível em code review.
  */
 const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string }> = {
+  // --- distribuição oianmaxdev: jobs SEM condição (rodam quando disparados) ---
+  "distro-release.yml::release": {
+    condicao: null,
+    efeito: "Cria a release candidata da distribuição. Uma condição aqui faria a release não sair, sem erro.",
+  },
+  "distro-promover.yml::promover": {
+    condicao: null,
+    efeito: "Promove a candidata ao canal que a VPS lê. Uma condição aqui travaria toda promoção em silêncio.",
+  },
+  "distro-acompanhar-upstream.yml::integrar": {
+    condicao: null,
+    efeito: "Prepara a integração de cada release oficial. Uma condição aqui deixaria a distribuição parada na base antiga.",
+  },
   // --- a cadeia que leva o conserto até a VPS ---------------------------------
   "release.yml::abrir-pr-de-release": {
-    condicao: "github.event_name == 'workflow_dispatch'",
+    // Distribuição oianmaxdev: restrito ao repositório oficial DE PROPÓSITO. No fork
+    // ele cortaria tag com número oficial; quem corta aqui é distro-release.yml.
+    condicao: "github.event_name == 'workflow_dispatch' && github.repository == 'melgarafael/DeskcommCRM'",
     efeito:
       "Este job é quem monta o PR de release a partir dos fragmentos de `.changes/`. " +
       "Desligá-lo faz nenhuma versão ser fechada — sem erro em lugar nenhum.",
   },
   "release.yml::cortar-tag": {
-    condicao: "github.event_name == 'push'",
+    // Distribuição oianmaxdev: restrito ao repositório oficial DE PROPÓSITO. No fork
+    // ele cortaria tag com número oficial; quem corta aqui é distro-release.yml.
+    condicao: "github.event_name == 'push' && github.repository == 'melgarafael/DeskcommCRM'",
     efeito:
       "Este job é quem CRIA E EMPURRA a tag `vX.Y.Z`, que é o gatilho da atualização " +
       "do parque instalado inteiro. Desligá-lo faz a release parar em silêncio: nenhuma " +

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Supervisor Comercial por IA (distribuição oianmaxdev)",
+    "subtitle": "Conversa humana → leitura com prova → política → CRM, aprovação, diário e diagnóstico; nunca fala com o cliente",
+    "output": "supervisor-comercial.html",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    { "id": "agenda", "label": "Agendador" },
+    { "id": "servidor", "label": "Servidor" },
+    { "id": "ia", "label": "IA" },
+    { "id": "dados", "label": "Banco" },
+    { "id": "tela", "label": "Tela" }
+  ],
+  "mainPath": ["cron", "fila", "observador", "modelo", "politica", "executor", "crm"],
+  "nodes": [
+    { "id": "cron", "lane": "agenda", "col": 0, "type": "service", "label": "cron supervisor-comercial", "sublabel": "a cada 5 min; retoma ações interrompidas antes da rodada" },
+    { "id": "fila", "lane": "dados", "col": 1, "type": "database", "label": "fn_supervisor_conversas_pendentes", "sublabel": "só conversas pendentes; organizações em rodízio (ultima_rodada_em)" },
+    { "id": "observador", "lane": "servidor", "col": 2, "type": "backend", "label": "observaOrganizacao", "sublabel": "reivindica a janela em supervisor_runs; prazo da rodada" },
+    { "id": "modelo", "lane": "ia", "col": 3, "type": "external", "label": "ponto supervisor_observe", "sublabel": "vínculo do ponto, conta ChatGPT oficial ou chave; llm_calls" },
+    { "id": "politica", "lane": "servidor", "col": 4, "type": "backend", "label": "decideAcoes", "sublabel": "evidência literal ou prova por omissão; modo por tipo; decisão humana vence" },
+    { "id": "executor", "lane": "servidor", "col": 5, "type": "backend", "label": "executaAcao / concluiAcao", "sublabel": "executing → applied; trava por updated_at; efeitos idempotentes" },
+    { "id": "crm", "lane": "dados", "col": 6, "type": "database", "label": "crm_leads, crm_tasks, lead_state", "sublabel": "etapa, campos, tags, tarefas, sinais do score" },
+    { "id": "acoes", "lane": "dados", "col": 5, "type": "database", "label": "supervisor_actions", "sublabel": "pendente, em execução, aplicada, aprovada; auditoria" },
+    { "id": "tela", "lane": "tela", "col": 6, "type": "frontend", "label": "Análise › Supervisor Comercial", "sublabel": "Atividade, Pendências, Diagnóstico, Configuração" },
+    { "id": "diagnostico", "lane": "servidor", "col": 4, "type": "backend", "label": "geraDiagnostico", "sublabel": "duas chamadas de IA; até 5 casos; recorrência contada em código" },
+    { "id": "relatorios", "lane": "dados", "col": 5, "type": "database", "label": "supervisor_reports", "sublabel": "diagnóstico gravado; PDF sem nova chamada de IA" }
+  ],
+  "edges": [
+    { "id": "rodada", "from": "cron", "to": "observador", "label": "rodadaDoSupervisor" },
+    { "id": "pendentes", "from": "observador", "to": "fila", "label": "pede só as pendentes" },
+    { "id": "ler", "from": "observador", "to": "modelo", "label": "generateObject(analiseSchema)" },
+    { "id": "decidir", "from": "modelo", "to": "politica", "label": "análise com citações" },
+    { "id": "planejar", "from": "politica", "to": "acoes", "label": "ação reservada ou pendente" },
+    { "id": "executar", "from": "acoes", "to": "executor", "label": "automática ou aprovada pela tela" },
+    { "id": "escrever", "from": "executor", "to": "crm", "label": "mecanismos oficiais; eventos sem disparo por padrão" },
+    { "id": "mostrar", "from": "acoes", "to": "tela", "label": "diário e pendências" },
+    { "id": "aprovar", "from": "tela", "to": "acoes", "label": "POST /api/v1/supervisor/actions/[id]" },
+    { "id": "gerar", "from": "tela", "to": "diagnostico", "label": "Gerar diagnóstico" },
+    { "id": "gravar", "from": "diagnostico", "to": "relatorios", "label": "relatório consultivo" },
+    { "id": "exportar", "from": "relatorios", "to": "tela", "label": "tela e PDF" }
+  ]
+}

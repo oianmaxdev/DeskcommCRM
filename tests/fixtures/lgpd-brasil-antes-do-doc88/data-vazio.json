@@ -20,6 +20,8 @@
   "orders": [],
   "activities": [],
   "checkpoints": [],
+  "supervisor_leituras": [],
+  "supervisor_acoes": [],
   "mcp_pedidos_de_acesso": [],
   "mcp_acessos": [],
   "appointments": [],

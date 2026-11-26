@@ -52,6 +52,20 @@ const DIR = join(process.cwd(), ".github/workflows");
  * acrescente, e acrescentar sem razão é visível em code review.
  */
 const ESCRITA_JUSTIFICADA: Record<string, string> = {
+  // ── Distribuição oianmaxdev (.github/distro/funcionalidades.md) ──
+  "distro-release.yml::contents: write":
+    "cria a tag vX.Y.Z da distribuição e a release CANDIDATA (prerelease) — só depois dos gates oficiais verdes no commit",
+  "distro-release.yml::actions: write":
+    "dispara publish-image.yml na tag: tag criada pelo GITHUB_TOKEN não dispara push, só workflow_dispatch",
+  "distro-promover.yml::contents: write":
+    "marca a candidata como latest (o que o atualizador da VPS lê); rodar o workflow é a aprovação humana",
+  "distro-acompanhar-upstream.yml::contents: write":
+    "empurra a branch distro/integracao/<versão> com o merge da release oficial (ou só o relatório de conflito); " +
+    "não executa código do upstream, só git",
+  "distro-acompanhar-upstream.yml::pull-requests: write":
+    "abre o PR de integração (ou o rascunho com o relatório de conflito) para a main do fork",
+  "distro-acompanhar-upstream.yml::actions: write":
+    "dispara ci/e2e/perf na branch candidata: PR aberto pelo GITHUB_TOKEN não dispara workflow",
   "publish-image.yml::packages: write":
     "publica a imagem do app no GHCR — é o artefato que o self-hoster instala",
   "vigia-de-colisao.yml::pull-requests: write":

@@ -39,6 +39,7 @@ import {
   ENTIDADE_ESPERADA_POR_GATILHO,
   GATILHOS_DO_TRIGGER_DE_LEAD,
 } from "@/lib/schemas/webhooks";
+import { eventoPedeSemDisparo } from "@/lib/event-log/sem-disparo";
 import { logger } from "@/lib/logger";
 import { lerEscolhaNoEnvio } from "@/lib/agenda/escolha-no-envio";
 import { ocultarProvaMetaNaResposta } from "@/lib/leads/prova-meta-lead-submitted";
@@ -650,6 +651,11 @@ export async function runAutomationForEvent(
     Boolean(row.metadata?.caused_by_rule) || (typeof requestId === "string" && requestId.startsWith("rule:"));
   if (causedByRule) {
     return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "skipped", detail: "caused_by_rule" };
+  }
+  // Movimento/tag feitos SOZINHOS pelo Supervisor Comercial: o fato fica no
+  // event_log, mas não vira mensagem por tabela (ver lib/event-log/sem-disparo.ts).
+  if (eventoPedeSemDisparo(row.metadata)) {
+    return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "skipped", detail: "sem_disparo_automatico" };
   }
 
   const expectedKind = EXPECTED_ENTITY_KIND[row.event_type];

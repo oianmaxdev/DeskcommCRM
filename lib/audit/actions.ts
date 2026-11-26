@@ -1772,6 +1772,17 @@ export const AUDIT_ACTIONS = [
   "channel.webchat_key_rotated",
   // Pausa do chat: emitida só quando o valor MUDA. Metadata leva o canal e o novo valor.
   "channel.webchat_paused",
+
+  // Supervisor Comercial por IA (migration 5001). `action_applied` é efeito
+  // AUTOMÁTICO no CRM (ator: o Supervisor, sem usuário); `action_approved` é o
+  // mesmo efeito com um gestor como ator. O metadata leva antes/depois e os ids
+  // das mensagens citadas — nunca o texto delas.
+  "supervisor.settings_updated",
+  "supervisor.action_applied",
+  "supervisor.action_approved",
+  "supervisor.action_rejected",
+  "supervisor.report_generated",
+  "supervisor.observe_requested",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

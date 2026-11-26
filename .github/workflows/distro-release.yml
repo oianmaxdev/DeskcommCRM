@@ -1,0 +1,164 @@
+# Release da DISTRIBUIÇÃO oianmaxdev (oficial + funcionalidades próprias).
+#
+# Manual de propósito: alguém escolhe o número. O workflow
+#   1. confere o formato da versão e que ela ainda não existe;
+#   2. exige os gates OFICIAIS verdes no commit da `main` (verify, invariants,
+#      build-and-size, e2e, imagens-ok) — sem isso, não há release;
+#   3. cria a tag `vX.Y.Z` no commit e dispara `publish-image.yml` nela
+#      (tag criada pelo GITHUB_TOKEN não dispara push; workflow_dispatch sim);
+#   4. espera as quatro imagens e confere digest e arquiteturas no GHCR;
+#   5. cria a release como PRERELEASE (candidata). Nenhuma VPS a recebe ainda:
+#      o atualizador lê `releases/latest`, que ignora prerelease. Promover é o
+#      workflow distro-promover.yml — ato humano.
+#
+# Versão: patch = 1000 + patch_oficial×100 + revisão. Ex.: v1.126.1001 é a
+# oficial 1.126.0 com a revisão 1 da distribuição. Fica acima de qualquer patch
+# oficial e é X.Y.Z estrito (o único formato que o kit e a tela aceitam).
+name: distro-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão da distribuição (ex.: v1.126.1001)"
+        required: true
+        type: string
+      exigir_gates:
+        description: "Exigir os gates oficiais verdes no commit (desligar só em emergência, e fica registrado)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: distro-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write   # tag e release
+      actions: write    # disparar publish-image.yml
+      checks: read
+      packages: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSAO: ${{ inputs.versao }}
+      IMAGENS: "deskcommcrm deskcomm-worker deskcomm-scheduler deskcomm-voice-agent"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Versão válida e livre
+        id: v
+        run: |
+          set -euo pipefail
+          [[ "$VERSAO" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || { echo "::error::versão precisa ser vX.Y.Z (recebido: $VERSAO)"; exit 1; }
+          patch="${BASH_REMATCH[3]}"
+          [ "$patch" -ge 1000 ] || { echo "::error::patch da distribuição começa em 1000 (ex.: v1.126.1001) para nunca colidir com versão oficial"; exit 1; }
+          if git rev-parse -q --verify "refs/tags/$VERSAO" >/dev/null || git ls-remote --exit-code --tags origin "refs/tags/$VERSAO" >/dev/null; then
+            echo "::error::a tag $VERSAO já existe"; exit 1
+          fi
+          base="$(tr -d '[:space:]' < .github/distro/base-oficial)"
+          [[ "$base" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::.github/distro/base-oficial inválido: $base"; exit 1; }
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "Versão $VERSAO sobre a oficial $base, commit $(git rev-parse --short HEAD)"
+
+      - name: Gates oficiais verdes no commit
+        if: inputs.exigir_gates
+        env:
+          SHA: ${{ steps.v.outputs.sha }}
+        run: |
+          set -euo pipefail
+          runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" --paginate \
+                  --jq '.check_runs[] | "\(.name)\t\(.conclusion // .status)"')"
+          falta=""
+          for gate in verify invariants build-and-size e2e imagens-ok; do
+            estado="$(printf '%s\n' "$runs" | awk -F'\t' -v g="$gate" '$1==g {print $2}' | sort -u | tr '\n' ' ')"
+            echo "$gate: ${estado:-ausente}"
+            case " $estado " in *" success "*) ;; *) falta="$falta $gate(${estado:-ausente})" ;; esac
+          done
+          if [ -n "$falta" ]; then
+            echo "::error::gates não aprovados no commit ${SHA::8}:$falta — a versão NÃO é publicada"
+            exit 1
+          fi
+
+      - name: Cria a tag
+        env:
+          SHA: ${{ steps.v.outputs.sha }}
+          BASE: ${{ steps.v.outputs.base }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSAO" "$SHA" -m "Distribuição oianmaxdev $VERSAO — base oficial $BASE"
+          git push origin "refs/tags/$VERSAO"
+
+      - name: Publica as imagens (publish-image.yml na tag)
+        run: |
+          set -euo pipefail
+          inicio="$(date -u +%FT%TZ)"
+          gh workflow run publish-image.yml --ref "$VERSAO"
+          run_id=""
+          for _ in $(seq 1 30); do
+            run_id="$(gh run list --workflow publish-image.yml --event workflow_dispatch --json databaseId,headBranch,createdAt \
+                      --jq "[.[] | select(.headBranch==\"$VERSAO\" and .createdAt >= \"$inicio\")][0].databaseId // empty")"
+            [ -n "$run_id" ] && break
+            sleep 10
+          done
+          [ -n "$run_id" ] || { echo "::error::a publicação não começou"; exit 1; }
+          echo "publish-image: run $run_id"
+          gh run watch "$run_id" --exit-status --interval 60
+
+      - name: Confere digests e arquiteturas no GHCR
+        id: digests
+        run: |
+          set -euo pipefail
+          tag="${VERSAO#v}"
+          owner="$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          : > digests.txt
+          for img in $IMAGENS; do
+            ref="ghcr.io/${owner}/${img}:${tag}"
+            docker buildx imagetools inspect "$ref" > inspect.txt
+            digest="$(awk '/^Digest:/ {print $2; exit}' inspect.txt)"
+            grep -q "linux/amd64" inspect.txt || { echo "::error::$ref sem linux/amd64"; exit 1; }
+            arm="$(grep -q 'linux/arm64' inspect.txt && echo sim || echo não)"
+            echo "$ref  $digest  amd64=sim arm64=$arm" | tee -a digests.txt
+          done
+
+      - name: Notas e release CANDIDATA (prerelease)
+        env:
+          SHA: ${{ steps.v.outputs.sha }}
+          BASE: ${{ steps.v.outputs.base }}
+        run: |
+          set -euo pipefail
+          anterior="$(gh release list --json tagName,isPrerelease --jq '[.[] | select(.isPrerelease|not)][0].tagName // empty')"
+          {
+            echo "## Distribuição oianmaxdev $VERSAO"
+            echo
+            echo "- **Base oficial:** [$BASE](https://github.com/melgarafael/DeskcommCRM/releases/tag/$BASE)"
+            echo "- **Commit:** \`$SHA\`"
+            echo "- **Funcionalidades exclusivas:** ver \`.github/distro/funcionalidades.md\`"
+            echo "- **Migrations da distribuição (faixa 5xxx):**"
+            git ls-tree -r --name-only "$SHA" -- supabase/migrations | grep -E '_5[0-9]{3}_' | sed 's/^/  - /'
+            echo
+            echo "### Gates"
+            echo "verify, invariants, build-and-size, e2e e imagens-ok exigidos no commit: ${{ inputs.exigir_gates && 'sim' || '**NÃO (emergência)**' }}"
+            echo
+            echo "### Imagens"
+            echo '```'
+            cat digests.txt
+            echo '```'
+            echo
+            echo "### Mudanças desde ${anterior:-o início da distribuição}"
+            if [ -n "$anterior" ]; then git log --no-merges --format='- %s (%h)' "$anterior..$SHA" -- . ':!CHANGELOG.md' | head -200; fi
+            echo
+            echo "> Candidata: nenhuma instalação a recebe até ser promovida (workflow distro-promover)."
+          } > notas.md
+          gh release create "$VERSAO" --prerelease --title "$VERSAO (base oficial $BASE)" --notes-file notas.md --verify-tag

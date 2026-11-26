@@ -195,6 +195,9 @@ CRONS="
 # catalogo_do_feed (lib/cron/piso-ocioso.ts) faz a batida sair antes de
 # qualquer leitura no banco.
 25 */2 * * *|120|api/v1/cron/catalog-feed-sync
+# DISTRIBUIÇÃO oianmaxdev — Supervisor Comercial (Feature C). No FIM da lista de
+# propósito: não desloca as linhas que a documentação oficial cita por número.
+*/5 * * * *|240|api/v1/cron/supervisor-comercial
 "
 
 # CRONTAB_PATH é ponto de injeção do teste (tests/shell/scheduler-entrypoint.test.sh).

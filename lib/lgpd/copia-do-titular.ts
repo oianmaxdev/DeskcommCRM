@@ -101,6 +101,9 @@ export const O_QUE_FICA = {
   orders: "os pedidos dele na loja",
   activities: "o que foi registrado sobre ele e quando",
   checkpoints: "o resumo que a máquina fez da conversa com ele (LGPD art. 20)",
+  supervisor_leituras: "o resumo que o Supervisor Comercial fez das conversas dele com a equipe (LGPD art. 20)",
+  supervisor_acoes:
+    "o que o Supervisor Comercial mudou no cadastro dele a partir das conversas, com o trecho citado como prova",
   mcp_pedidos_de_acesso: "os links de autorização gerados para ele acessar sistemas externos, e quando foram usados",
   mcp_acessos: "os sistemas externos que ele autorizou o agente a acessar, com os escopos e as datas (nunca o token)",
   appointments: "os compromissos dele, com o link da reunião e a anotação que o PDF já imprime",

@@ -157,6 +157,11 @@ describe("a sétima cópia não nasce", () => {
    * último caso), para não sobrar autorização em nome de código que sumiu.
    */
   const LEITURAS_LEGITIMAS: ReadonlyArray<{ arquivo: string; trecho: string; motivo: string }> = [
+    {
+      arquivo: "lib/supervisor/escolha-de-modelo.ts",
+      trecho: "nome: m.display_name || m.model_id",
+      motivo: "nome de MODELO de IA do catálogo (ai_models.display_name), não de contato",
+    },
     // ── prospecção (PR #963): nenhuma destas é nome de CONTATO ──────────────
     {
       arquivo: "components/connections/CanalBotClient.tsx",

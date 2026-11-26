@@ -141,6 +141,11 @@ export const LEITORES_DA_DESCRICAO: Record<string, string> = {
   "app/api/v1/lgpd/requests/[id]/preview/route.ts": "minimização",
   "lib/lgpd/cascata.ts": "só zera",
   "lib/conversas/exporta-pdf.ts": "fora: decisão do dono",
+  // Supervisor Comercial (distribuição oianmaxdev): usa o texto SE já existir
+  // (áudio é sempre transcrito; foto, só quando outro leitor ligou a descrição).
+  // Fora do predicado de propósito: ligar o Supervisor não paga visão de toda foto.
+  "lib/supervisor/observador.ts": "fora: decisão do dono (distribuição)",
+  "lib/supervisor/diagnostico.ts": "fora: decisão do dono (distribuição)",
   "workers/media-derive-worker.ts": "escritor",
   "lib/messaging/media/escada-de-transcricao.ts": "escritor (áudio)",
   "lib/api/handlers/types.ts": "tipo",

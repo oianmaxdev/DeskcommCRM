@@ -147,6 +147,17 @@ type Decisao =
  */
 const DECISOES: Record<string, Decisao> = {
   // ── redigir na função única ───────────────────────────────────────────────
+  // ── distribuição oianmaxdev: Supervisor Comercial (migration 5001) ──
+  supervisor_runs: {
+    decidida: "redigir",
+    caminho: "gatilho",
+    razao: "resumo e análise da leitura citam o que a pessoa escreveu: zerados na virada de is_anonymized pelo gatilho fn_supervisor_redigir_ao_anonimizar; a LINHA fica (contagem e data valem para o diagnóstico).",
+  },
+  supervisor_actions: {
+    decidida: "redigir",
+    caminho: "gatilho",
+    razao: "evidências e motivo da ação citam a conversa: zerados na virada de is_anonymized pelo mesmo gatilho; a LINHA fica (é a trilha do que o Supervisor fez no CRM).",
+  },
   contacts: {
     decidida: "redigir",
     caminho: "cascata",

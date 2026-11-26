@@ -48,6 +48,11 @@
  * `lead_notes` (#1957, Art. 18 II): o que a cascata apaga a pedido dele é o que
  * se entrega a pedido dele. A diferença nos dois arquivos é só a linha
  * `"lead_attachments": []`; o resto segue byte a byte.
+ *
+ * Sétima exceção, regravando `data-*.json` (distribuição oianmaxdev): as seções
+ * `supervisor_leituras` e `supervisor_acoes` do Supervisor Comercial (migration
+ * 5001), pela mesma regra do Art. 18 II — a anonimização as redige, então o
+ * acesso as entrega. A diferença é só essas duas linhas; o resto segue byte a byte.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

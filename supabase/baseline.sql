@@ -85681,7 +85681,7 @@ on conflict (id) do update
 
 -- ---- meta mensal por indicador (migration 0756, #3025, fatia 1) ----
 -- manifest: **Meta mensal de um indicador, por organização (#3025, fatia 1: quantidade de vendas ganhas).** A tabela nova `crm_metas` guarda o ALVO da empresa — `organization_id`, `periodo` (sempre o 1º dia do mês na data de calendário), `indicador` (`vendas_ganhas` nesta fatia), `pipeline_id` opcional (nulo = a empresa inteira) e `alvo` (quantidade). A leitura é org-scoped sem gate de papel (a tela de Desempenho mostra a meta da empresa a qualquer membro); a ESCRITA é `manager+` com auditoria, pela Server Action `definirMetaMensal`. Aditiva e idempotente: o mesmo bloco entra no fim do `baseline.sql`, que é o arquivo que o kit self-host aplica.
--- =====================================================================
+-- ============================================================================
 -- 0756 — META MENSAL POR INDICADOR (#3025, fatia 1)
 --
 -- ─── O que faltava ──────────────────────────────────────────────────────────
@@ -85960,7 +85960,6 @@ create policy tenant_isolation_lead_field_proposals_select on public.lead_field_
 -- A escrita é instalada somente na definição final da 0807, abaixo. Recriar
 -- aqui a policy intermediária da 0772 reabriria o WITH CHECK mais largo a
 -- cada update até a correção final. A migration histórica permanece intacta.
-=======
 -- ---- Supervisor Comercial por IA (migration 5001) ----
 --
 -- Idempotente: create if not exists, policies recriadas, grants reaplicados.

@@ -79,13 +79,17 @@ const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string
   },
   // --- a cadeia que leva o conserto até a VPS ---------------------------------
   "release.yml::abrir-pr-de-release": {
-    condicao: "github.event_name == 'workflow_dispatch'",
+    // Distribuição oianmaxdev: restrito ao repositório oficial DE PROPÓSITO. No fork
+    // ele cortaria tag com número oficial; quem corta aqui é distro-release.yml.
+    condicao: "github.event_name == 'workflow_dispatch' && github.repository == 'melgarafael/DeskcommCRM'",
     efeito:
       "Este job é quem monta o PR de release a partir dos fragmentos de `.changes/`. " +
       "Desligá-lo faz nenhuma versão ser fechada — sem erro em lugar nenhum.",
   },
   "release.yml::cortar-tag": {
-    condicao: "github.event_name == 'push'",
+    // Distribuição oianmaxdev: restrito ao repositório oficial DE PROPÓSITO. No fork
+    // ele cortaria tag com número oficial; quem corta aqui é distro-release.yml.
+    condicao: "github.event_name == 'push' && github.repository == 'melgarafael/DeskcommCRM'",
     efeito:
       "Este job é quem CRIA E EMPURRA a tag `vX.Y.Z`, que é o gatilho da atualização " +
       "do parque instalado inteiro. Desligá-lo faz a release parar em silêncio: nenhuma " +

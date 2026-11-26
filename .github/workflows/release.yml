@@ -37,7 +37,9 @@ permissions:
 
 jobs:
   abrir-pr-de-release:
-    if: github.event_name == 'workflow_dispatch'
+    # Distribuição oianmaxdev: o corte oficial é do repositório oficial. No fork a
+    # versão sai de distro-release.yml (vX.Y.1NNN), nunca daqui.
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'melgarafael/DeskcommCRM'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -98,7 +100,9 @@ jobs:
             --title "Release ${VERSAO}" --body-file /tmp/corpo.md
 
   cortar-tag:
-    if: github.event_name == 'push'
+    # Distribuição oianmaxdev: o corte oficial é do repositório oficial. No fork a
+    # versão sai de distro-release.yml (vX.Y.1NNN), nunca daqui.
+    if: github.event_name == 'push' && github.repository == 'melgarafael/DeskcommCRM'
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -9,14 +9,17 @@
  * Agendado a cada 5 minutos no `scheduler` (docker/scheduler/entrypoint.sh). A
  * cadência não precisa ser menor: o próprio debounce de silêncio é de minutos.
  *
- * Auth: `Authorization: Bearer <INTERNAL_CRON_SECRET | INTERNAL_SECRET>`.
+ * Auth: o portão compartilhado `autorizaCron()` (INTERNAL_CRON_SECRET ou
+ * INTERNAL_SECRET, em tempo constante). Organização parada (suspensa) fica de
+ * fora de leitura, retomada e diagnóstico recorrente (`idsDeOrgsParadas`).
  * Audita por AÇÃO aplicada (lib/supervisor/executor.ts), nunca a rodada vazia.
  */
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
-import { env } from "@/lib/env";
+import { autorizaCron } from "@/lib/auth/cron-auth";
+import { idsDeOrgsParadas } from "@/lib/organizacao/operante";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerConfig } from "@/lib/supervisor/config";
@@ -30,20 +33,21 @@ export const maxDuration = 300;
 
 async function handle(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
-  const auth = req.headers.get("authorization") ?? "";
-  const provided = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
-  const accepted = [env.INTERNAL_CRON_SECRET, env.INTERNAL_SECRET].filter(Boolean);
-  if (accepted.length === 0 || !provided || !accepted.includes(provided)) {
+  if (!autorizaCron(req)) {
     return fail("forbidden", "Cron secret missing or invalid.", 403, { requestId });
   }
 
   const admin = createAdminClient();
   try {
+    // Organização suspensa não recebe leitura, retomada nem relatório.
+    const paradas = new Set(await idsDeOrgsParadas(admin));
     // Primeiro, o que ficou pela metade (achado D): ação reservada cujo processo caiu.
-    const retomada = await retomaAcoesInterrompidas(admin, getSupervisorPool(), new Date(), requestId);
+    const retomada = await retomaAcoesInterrompidas(admin, getSupervisorPool(), new Date(), requestId, 50, paradas);
     const rodada = await rodadaDoSupervisor(
       { admin, pool: getSupervisorPool(), agora: () => new Date(), analisar: analisarComModelo },
       requestId,
+      undefined,
+      paradas,
     );
 
     // Relatórios recorrentes vencidos.
@@ -54,6 +58,7 @@ async function handle(req: NextRequest): Promise<Response> {
       .eq("enabled", true)
       .limit(100);
     for (const o of (orgs ?? []) as Array<{ organization_id: string; config: unknown }>) {
+      if (paradas.has(o.organization_id)) continue;
       const config = lerConfig(o.config);
       if (config.relatorio_recorrente === "desligado") continue;
       const { data: ultimo } = await admin

@@ -216,6 +216,8 @@ export async function rodadaDoSupervisor(
   deps: DepsDoObservador,
   requestId: string,
   prazoMs: number = PRAZO_DA_RODADA_MS,
+  /** Organizações paradas (suspensas): ficam fora da rodada. */
+  orgsParadas: ReadonlySet<string> = new Set(),
 ): Promise<ResumoDaRodada> {
   const total = zero();
   const prazo = deps.agora().getTime() + prazoMs;
@@ -227,6 +229,7 @@ export async function rodadaDoSupervisor(
     .limit(500);
   if (error) throw new Error(`supervisor_settings: ${error.message}`);
   for (const row of (data ?? []) as Array<{ organization_id: string; config: unknown }>) {
+    if (orgsParadas.has(row.organization_id)) continue;
     if (deps.agora().getTime() >= prazo) {
       total.interrompida_por_prazo = true;
       break;

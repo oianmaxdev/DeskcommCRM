@@ -33,6 +33,8 @@ export async function retomaAcoesInterrompidas(
   agora: Date,
   requestId: string,
   limite = 50,
+  /** Organizações paradas (suspensas): a ação fica em execução até a organização voltar. */
+  orgsParadas: ReadonlySet<string> = new Set(),
 ): Promise<ResumoDaRetomada> {
   const out: ResumoDaRetomada = { retomadas: 0, aplicadas: 0, desistidas: 0 };
   const corte = new Date(agora.getTime() - PARADA_APOS_MS).toISOString();
@@ -50,6 +52,7 @@ export async function retomaAcoesInterrompidas(
   for (const row of (data ?? []) as Array<
     AcaoGravada & { decided_by: string | null; execution_started_at: string; execution_attempts: number }
   >) {
+    if (orgsParadas.has(row.organization_id)) continue;
     // Reivindica: só quem ainda vê a MESMA hora de início leva.
     const esgotou = row.execution_attempts >= MAX_TENTATIVAS;
     const { data: minhas } = await admin

@@ -223,3 +223,51 @@ alter table public.supervisor_actions add constraint supervisor_actions_status_c
   'applied','pending_approval','approved','rejected','skipped','failed','superseded','executing'));
 create index if not exists supervisor_actions_executando_idx
   on public.supervisor_actions (execution_started_at) where status = 'executing';
+
+-- ---- LGPD do Supervisor no banco (catálogo de FKs para contacts, #1964/0391) ----
+--
+-- `supervisor_runs` e `supervisor_actions` têm FK para `contacts` e guardam
+-- trechos do que a pessoa escreveu (resumo, análise, evidências). A redação vive
+-- no BANCO, na virada de `is_anonymized` — a mesma porta do desenho da 0391 —,
+-- para valer por QUALQUER caminho de anonimização, não só pelo da aplicação
+-- (lib/lgpd/cascata.ts, que segue de pé e é idempotente). O estudo de caso do
+-- contato sai do diagnóstico gravado (`supervisor_reports.diagnosis.casos`).
+-- As LINHAS ficam: contagens e datas seguem valendo para o diagnóstico.
+create or replace function public.fn_supervisor_redigir_ao_anonimizar()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.supervisor_runs
+     set summary = '', analysis = '{"redigido_por_lgpd": true}'::jsonb
+   where organization_id = new.organization_id
+     and contact_id = new.id
+     and (summary <> '' or analysis <> '{"redigido_por_lgpd": true}'::jsonb);
+
+  update public.supervisor_actions
+     set evidence = '[]'::jsonb, reason = 'Redigido por solicitação LGPD'
+   where organization_id = new.organization_id
+     and contact_id = new.id
+     and (evidence <> '[]'::jsonb or reason <> 'Redigido por solicitação LGPD');
+
+  update public.supervisor_reports r
+     set diagnosis = jsonb_set(
+           r.diagnosis, '{casos}',
+           coalesce((select jsonb_agg(c) from jsonb_array_elements(r.diagnosis->'casos') c
+                      where c->>'contact_id' is distinct from new.id::text), '[]'::jsonb))
+   where r.organization_id = new.organization_id
+     and jsonb_typeof(r.diagnosis->'casos') = 'array'
+     and r.diagnosis->'casos' @> jsonb_build_array(jsonb_build_object('contact_id', new.id::text));
+  return new;
+end;
+$$;
+revoke execute on function public.fn_supervisor_redigir_ao_anonimizar() from public, anon, authenticated;
+
+drop trigger if exists trg_supervisor_redigir_ao_anonimizar on public.contacts;
+create trigger trg_supervisor_redigir_ao_anonimizar
+  after update of is_anonymized on public.contacts
+  for each row
+  when (new.is_anonymized and not coalesce(old.is_anonymized, false))
+  execute function public.fn_supervisor_redigir_ao_anonimizar();

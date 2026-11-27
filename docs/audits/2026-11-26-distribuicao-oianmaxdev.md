@@ -93,7 +93,8 @@ O que só o SSH responde (não bloqueia, mas vale conferir na janela): `git stat
 | `main` do fork (merge `1b15faeff`) | 5 gates verdes |
 | Release `v1.126.1001` | **prerelease** publicada pelo `distro-release` com gates exigidos; 4 imagens em amd64+arm64, **públicas** (pull anônimo 200), `revision` = commit da tag, `source` = o fork |
 | Instabilidade conhecida | a perna Postgres 17 de `invariants` bateu no teto de 45 min duas vezes (no fork não há o executor próprio do upstream); passou ao re-rodar. O teto **não** foi subido: a regra escrita no repositório manda investigar antes |
-| PR #2 (`v1.126.1002`) | **sem CI**: o GitHub desligou as Actions do fork de novo (`Actions has been disabled for this repository`, 27/11 ~00h UTC). Verificado localmente: `test:shell` completo, guardas do kit |
+| PR #2 (`v1.126.1002`) | Actions desligadas pelo GitHub em 27/11 ~00h UTC e religadas pelo dono. **5 gates verdes** no PR e na `main` (`ef180a01f`). Os invariantes foram cancelados aos 45 min nas duas majors; o teto do fork subiu para 60 com a razão medida (§E.4) |
+| Release `v1.126.1002` | **prerelease** publicada com gates exigidos; 4 imagens amd64+arm64, pull anônimo 200 |
 
 ### E.2 Simulações numa VPS isolada
 
@@ -117,15 +118,44 @@ Ambiente: contêiner Ubuntu 24.04 com Docker próprio (docker-in-docker), Traefi
 | — | `buildx` ausente | o pré-voo recusa sem mexer em nada → runbook ganhou a checagem `docker buildx version` |
 | — | Traefik reiniciado na janela do vigia | um 503 passageiro conta como queda e dispara a volta → runbook: não reiniciar o proxy nos minutos seguintes |
 
-**Não executados (dependem das Actions):** CI do PR #2, release `v1.126.1002`, atualização
-personalizada → personalizada (`1001 → 1002`), conflito no `distro-acompanhar-upstream` e gate
-reprovando o `distro-release` em execução real. A volta automática corrigida foi provada com o kit do
-PR #2 rodando de fora do clone; dentro do clone ela só existe a partir da `v1.126.1002`.
+**Com a `v1.126.1002` publicada (27/11/2026):**
+
+| # | Cenário | Resultado |
+|---|---|---|
+| 11 | Personalizada → personalizada (`1001 → 1002`), kit do clone, sem `--force` | **passou em 2m17s**; volta registrada para `v1.126.1001`; dados intactos |
+| 12 | App cai depois de `1001 → 1002` → volta automática | **voltou sozinho para a `v1.126.1001` em 50 s**, saudável |
+| 13 | §4.1 literal: rollback manual para a 1.110.0 oficial | **52 s**, saudável |
+| 14 | **§3 literal com a `v1.126.1002`** (o procedimento de produção) | **passou em 1m42s**; volta registrada para `v1.110.0`; árvore limpa; crontab sem referência à cópia externa |
+| 15 | **App cai depois da transição → volta automática para a 1.110.0 oficial** (kit corrigido dentro do clone) | **voltou sozinho em 74 s**, imagens `melgarafael:1.110.0`, `/app` 307, dados intactos — o defeito do cenário 7 está corrigido na versão publicada |
+| 16 | Tela depois da §3 | Versão instalada 1.126.1002 com a revisão do commit da tag; Supervisor desligado; Inbox e CRM. Atualização avisa "não consegui checar" até a promoção (`releases/latest` 404) — esperado |
+
+**Não ensaiados:** conflito real no `distro-acompanhar-upstream` (só acontece quando sair release
+oficial nova) e gate reprovando o `distro-release` (a lógica está no workflow e foi lida, não
+provocada). Produção conferida pelo MCP depois de tudo: **1.110.0, saudável, intocada.**
 
 ### E.3 Local
 
 `test:shell` completo verde sobre o PR #2; `test:db` dos invariantes afetados (LGPD, definers,
 Supervisor) verde no Postgres real; typecheck restrito dos arquivos tocados limpo.
+
+### E.4 Consumo do GitHub Actions
+
+Em 100 execuções recentes do fork, **80 eram agendadas e sem utilidade aqui**: `relogio` (a cada 5
+min, para instalação sem agendador — a VPS tem o contêiner `scheduler`) e `vigia-de-colisao` (a cada
+2 h, para colisão de migrations entre muitos PRs do upstream — o `verify` já mede em cada PR).
+**Desligados no repositório** (`gh workflow disable`), junto com o `acolhida` (no fork nunca faz
+nada) — configuração, não código: a integração do upstream não os religa.
+
+| Medida | Valor |
+|---|---|
+| Uma rodada completa de gates | ~350 min de executor (ci 156, e2e 140, imagens 48, perf 3) |
+| Por mudança | ~700 (PR + push na `main`) |
+| Teto dos invariantes | 45 → 60 min no fork: verde medido 38–43 min, cancelado aos 45 em 3 de 4 rodadas, e cada nova tentativa custava até 90 min |
+| Ficou ligado | os 5 gates, `distro-acompanhar-upstream` (6/6 h), `distro-release`, `distro-promover`, `mysql-integracao` (informativo), `release` (pulado no fork) |
+
+Para gastar menos: **juntar correções em poucos PRs** (cada PR paga duas rodadas) e não disparar
+workflow à mão sem motivo. Cortar a rodada do push na `main` exigiria mexer em vários workflows do
+upstream e abriria conflito em toda integração — não compensa.
 
 ## F. Para a sua operação
 
@@ -135,10 +165,8 @@ Supervisor) verde no Postgres real; typecheck restrito dos arquivos tocados limp
 4. **Nova funcionalidade sua:** entra por PR na `main` do fork, com migrations na faixa 5xxx e uma linha em `.github/distro/funcionalidades.md`. Depois, `distro-release` com a próxima revisão.
 5. **Voltar versão:** automática se o app não subir ou cair logo depois (a partir da `v1.126.1002`); manual pelos pins (runbook §4.1), porque o `update.sh` recusa downgrade. O banco não volta junto: as mudanças são aditivas.
 6. **O que falta para a implantação:**
-   1. religar as Actions do fork (ver abaixo);
-   2. CI verde no PR #2 → merge → `distro-release v1.126.1002`;
-   3. ensaio rápido `1001 → 1002` e da volta automática na simulação (o ambiente está pronto);
-   4. **sua autorização** para a janela: snapshot, backup e o runbook §3 com `v1.126.1002`.
+   1. **sua autorização** para a janela: snapshot, backup e o runbook §3 com `v1.126.1002`;
+   2. a promoção da `v1.126.1002` (`distro-promover`), na mesma autorização.
 
 ## G. Ferramentas e skills
 

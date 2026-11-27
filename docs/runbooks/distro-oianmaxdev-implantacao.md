@@ -10,14 +10,14 @@
 
 | # | Pré-requisito | Estado em 27/11/2026 |
 |---|---|---|
-| 1 | Actions do fork ligadas | ❌ **desligadas pelo GitHub** (`Actions has been disabled for this repository`) — religar na aba Actions; se o botão não aparecer, é bloqueio da conta (suporte do GitHub) |
+| 1 | Actions do fork ligadas | ✅ religadas pelo dono em 27/11; o agendado que não serve ao fork foi desligado (ver o relatório §E.4) |
 | 2 | Gates verdes e merge do PR #1 (integração) | ✅ 5 gates verdes; mesclado (`1b15faeff`) |
-| 3 | Gates verdes e merge do PR #2 (volta para a versão oficial) | ⏳ depende do item 1 |
-| 4 | Release candidata **`v1.126.1002`** pelo `distro-release` | ⏳ depende do item 3. A `v1.126.1001` existe, mas **não use**: a volta automática dela deixa o app fora do ar (§3) |
+| 3 | Gates verdes e merge do PR #2 (volta para a versão oficial) | ✅ 5 gates verdes no PR e na `main` (`ef180a01f`) |
+| 4 | Release candidata **`v1.126.1002`** pelo `distro-release` | ✅ prerelease publicada; 4 imagens amd64+arm64, pull anônimo 200. A `v1.126.1001` existe, mas **não use** (§3) |
 | 5 | Pacotes do GHCR públicos | ✅ herdaram a visibilidade do repositório (pull anônimo 200) |
 | 6 | Restauração testada em ambiente isolado | ✅ simulação de 26/11/2026 (relatório §E.2, cenário 10) |
-| 7 | Ensaio da transição e das voltas | ✅ na `v1.126.1001` + kit do PR #2; ⏳ repetir com a `v1.126.1002` publicada (o ambiente de simulação está pronto) |
-| 8 | Autorização do dono para a janela | ⏳ |
+| 7 | Ensaio da transição e das voltas | ✅ com a `v1.126.1002` publicada: §3 literal (1m42s), volta automática para a 1.110.0 oficial (74 s), §4.1 literal (52 s), personalizada → personalizada e a volta dela |
+| 8 | Autorização do dono para a janela **e para promover a `v1.126.1002`** | ⏳ |
 
 ## 1. A VPS — confirmado pelo MCP da Hostinger em 2026-11-26 (só leitura)
 
@@ -103,6 +103,8 @@ Nunca aponte esse ambiente para o banco de produção.
    ```bash
    cd /opt/deskcommcrm
    git status --porcelain            # precisa sair VAZIO; se não, pare e investigue
+                                     # (única exceção: `?? .update-de-onde-vim`, marca do próprio
+                                     #  kit de uma tentativa anterior — pode apagar)
    git describe --tags --exact-match # v1.110.0 — é a versão para onde a volta automática retorna
    git remote set-url origin https://github.com/oianmaxdev/DeskcommCRM.git
    git fetch --tags origin
@@ -154,6 +156,11 @@ Nunca aponte esse ambiente para o banco de produção.
      **num número seu**;
    - integrações: webhooks de saída, n8n e Evolution seguem respondendo (sem alterar nada neles);
    - Análise › Supervisor Comercial abre e mostra o Supervisor **desligado**.
+
+6. **Promover a `v1.126.1002`** (workflow `distro-promover`, junto com a mesma autorização). Até a
+   promoção, Configurações › Atualização mostra "Não consegui checar se há versão nova": o fork não
+   tem release estável marcada como a mais recente (`releases/latest` responde 404) e o agente não tem
+   com o que comparar — medido na simulação. Não é falha do deploy.
 
 ### Critérios para interromper ou voltar
 

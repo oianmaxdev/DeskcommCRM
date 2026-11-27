@@ -1452,7 +1452,7 @@ else
   c_ylw "$(t "⚠ Não consegui descobrir a última versão publicada (rede?).")"
   c_ylw "$(t "  Instalando pelo canal 'latest'. Depois rode: bash hostgator-setup-kit/update.sh")"
 fi
-IMAGEM_APP_DEFAULT="${IMG_APP}:${VERSAO_ALVO}"
+IMAGEM_APP_DEFAULT="$(img_ref deskcommcrm "$VERSAO_ALVO")"
 
 FIELDS=(
   "DOMAIN|Domínio do CRM (ex: crm.suaempresa.com.br)||v_domain||"
@@ -1785,7 +1785,7 @@ esac
   # `latest` é uma matriz de compatibilidade que ninguém testou. Estas duas
   # imagens existem desde que o worker deixou de ser `build:`-only — antes disso
   # ele era compilado aqui na VPS e nenhum update jamais o alcançava.
-  envq WORKER_IMAGE "${IMG_WORKER}:${TAG_ALVO}"
+  envq WORKER_IMAGE "$(img_ref deskcomm-worker "$TAG_ALVO")"
   envq WORKER_PULL_POLICY "$PULL_POLICY_ALVO"
   # O par de prazos do desligamento (#2823) — os dois GRAVADOS juntos porque um
   # sem o outro é o defeito que a issue mediu: `WORKER_STOP_GRACE_PERIOD` é o que
@@ -1795,11 +1795,11 @@ esac
   # de folga para fechar pool e healthz. Mexeu num, mexa no outro.
   envq WORKER_STOP_GRACE_PERIOD "${WORKER_STOP_GRACE_PERIOD:-40s}"
   envq SHUTDOWN_GRACE_MS "${SHUTDOWN_GRACE_MS:-30000}"
-  envq SCHEDULER_IMAGE "${IMG_SCHEDULER}:${TAG_ALVO}"
+  envq SCHEDULER_IMAGE "$(img_ref deskcomm-scheduler "$TAG_ALVO")"
   envq SCHEDULER_PULL_POLICY "$PULL_POLICY_ALVO"
   # A telefonia por SIP (profile `telefonia`, desligado por padrão) também segue
   # a versão: gravar não liga nada, e no dia em que ligarem ela sobe casada.
-  envq VOICE_AGENT_IMAGE "${IMG_VOICE_AGENT}:${TAG_ALVO}"
+  envq VOICE_AGENT_IMAGE "$(img_ref deskcomm-voice-agent "$TAG_ALVO")"
   envq VOICE_AGENT_PULL_POLICY "$PULL_POLICY_ALVO"
   envq DOMAIN "$DOMAIN"
   envq ACME_EMAIL "$ACME_EMAIL"

@@ -72,7 +72,13 @@ const TETOS: Record<string, { minutos: number; razao: string }> = {
   // lê o desfecho de `needs`. O teto que denuncia a suíte crescendo vive na perna
   // que a roda.
   "ci.yml::invariants-majors": {
-    minutos: 45,
+    // Distribuição oianmaxdev: 60, e a razão NÃO é a suíte ter crescido. No fork
+    // a perna roda nas máquinas padrão do GitHub (o upstream tem RUNNER_PROPRIO):
+    // verde medido em 38 min (pg15) e 43 min (pg17) na `main` do fork em
+    // 26/11/2026, e cancelada por relógio aos 45 nas duas majors em 3 de 4
+    // rodadas — cada nova tentativa custava até 90 min de executor. Se passar de
+    // 50 min verde, a pergunta volta a ser por que a passada cresceu.
+    minutos: 60,
     razao:
       "a perna deixou de ser UMA passada: agora é `test:db` + `test:db:update`, e cada uma sobe " +
       "Postgres e aplica o baseline (p90 medido de uma passada: 325s). O 30 era DECLARADO, não " +

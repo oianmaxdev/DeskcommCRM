@@ -43,6 +43,9 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 # repetido aqui: o que este arquivo mede independe de quem publica as imagens.
 NS="$(sed -n 's/^IMG_NS="\(.*\)"$/\1/p' "$REPO_ROOT/hostgator-setup-kit/_common.sh" | head -1)"
 [ -n "$NS" ] || { echo "não consegui ler IMG_NS de _common.sh"; exit 1; }
+# Distribuição: 0.9.0 é numeração oficial (patch < 1000) → registro oficial (ns_da_versao).
+NS_OFICIAL="$(sed -n 's/^IMG_NS_OFICIAL="\(.*\)"$/\1/p' "$REPO_ROOT/hostgator-setup-kit/_common.sh" | head -1)"
+[ -n "$NS_OFICIAL" ] || { echo "não consegui ler IMG_NS_OFICIAL de _common.sh"; exit 1; }
 export NS
 
 WORK="$(mktemp -d)"
@@ -300,13 +303,13 @@ check "em ARM64 o update usa as imagens publicadas por pull" \
 check "em ARM64 não tenta compilar as imagens localmente" \
   nao_contem '-f docker-compose.build.yml build' "$DOCKER_LOG"
 check "o app recebe a versão da atualização" \
-  grep -q "^APP_IMAGE=${NS}/deskcommcrm:0.9.0$" "$ENV3B"
+  grep -q "^APP_IMAGE=${NS_OFICIAL}/deskcommcrm:0.9.0$" "$ENV3B"
 check "o worker recebe a mesma versão do app" \
-  grep -q "^WORKER_IMAGE=${NS}/deskcomm-worker:0.9.0$" "$ENV3B"
+  grep -q "^WORKER_IMAGE=${NS_OFICIAL}/deskcomm-worker:0.9.0$" "$ENV3B"
 check "o scheduler recebe a mesma versão do app" \
-  grep -q "^SCHEDULER_IMAGE=${NS}/deskcomm-scheduler:0.9.0$" "$ENV3B"
+  grep -q "^SCHEDULER_IMAGE=${NS_OFICIAL}/deskcomm-scheduler:0.9.0$" "$ENV3B"
 check "a voz recebe a mesma versão do app" \
-  grep -q "^VOICE_AGENT_IMAGE=${NS}/deskcomm-voice-agent:0.9.0$" "$ENV3B"
+  grep -q "^VOICE_AGENT_IMAGE=${NS_OFICIAL}/deskcomm-voice-agent:0.9.0$" "$ENV3B"
 check "a atualização preserva o WAHA ARM64 escolhido na instalação" \
   grep -q '^WAHA_IMAGE=devlikeapro/waha:noweb-arm-2026.7.2$' "$ENV3B"
 

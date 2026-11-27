@@ -34,7 +34,8 @@ check "catálogo OpenRouter é preenchido no primeiro deploy" grep -q 'api/v1/cr
 check "administrador recebe senha aleatoria" grep -q 'openssl rand -hex 16' "$INSTALLER"
 check "re-rodar nao apaga chave de IA posta depois" bash -c '! grep -qE "(ANTHROPIC|OPENROUTER|OPENAI)_API_KEY \"\"" "$1"' _ "$INSTALLER"
 check "nao grava tag movel de imagem" bash -c '! grep -qE "_IMAGE .*:latest|_PULL_POLICY always" "$1"' _ "$INSTALLER"
-check "--yes herda imagem por numero de versao" grep -qF 'IMAGEM_APP_DEFAULT="${IMG_APP}:${VERSAO_ALVO}"' "$CANONICAL"
+# Distribuição: a referência sai de img_ref (registro de quem publicou a versão).
+check "--yes herda imagem por numero de versao" grep -qF 'IMAGEM_APP_DEFAULT="$(img_ref deskcommcrm "$VERSAO_ALVO")"' "$CANONICAL"
 check "confirmacao de e-mail do Supabase fica ligada" grep -q 'ENABLE_EMAIL_AUTOCONFIRM false' "$INSTALLER"
 check "Caddy publica somente rotas Supabase necessarias" grep -q '@supabase path /auth/v1' "$ROOT_DIR/Caddyfile.single-server"
 check "Studio nao e publicado pelo Caddy" bash -c '! grep -q "/studio" "$1"' _ "$ROOT_DIR/Caddyfile.single-server"

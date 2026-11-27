@@ -71,66 +71,74 @@
 | Item | Valor |
 |---|---|
 | VM | KVM 1, ID `1653422`, Ubuntu 24.04 com n8n, 1 vCPU (~7% de uso), 4 GB RAM (~1,5 GB livres), 50 GB disco (~29 GB livres) |
-| DeskcommCRM | `/opt/deskcommcrm`, 1.110.0: app, worker e scheduler saudáveis; Redis, `serverless-redis-http`, WAHA `latest-2026.7.2` |
-| Memória | app ~250 MB de 768 MB, worker ~195 MB de 512 MB, WAHA ~356 MB de 1,3 GB |
-| Proxy | app sem porta publicada → servido pelo Traefik do `n8n` (80/443) |
-| Banco | externo: não há Postgres na stack do Deskcomm (tipo e host a confirmar por SSH) |
-| Backups | da Hostinger, semanais (15/11 e 22/11), restauram a VM inteira. **Sem snapshot.** Sem grupo de firewall da Hostinger |
+| DeskcommCRM | `/opt/deskcommcrm`, 1.110.0: app, worker e scheduler saudáveis; Redis, `serverless-redis-http`, WAHA `latest-2026.7.2`. Imagens fixadas por versão (`*_PULL_POLICY=missing`) |
+| Proxy | `REVERSE_PROXY=traefik` (lido do `.env` pelo MCP), rede `n8n_default`, entrypoints `web`/`websecure`, resolver `mytlschallenge` |
+| Banco | **Supabase na nuvem** (pooler `sa-east-1`) — não há Postgres na stack |
+| Volumes do WAHA | `deskcommcrm_waha-data` (sessões) e `deskcommcrm_waha-media` |
+| Chaves SSH | nenhuma cadastrada no painel; o WSL não tem chave nem configuração para a VPS |
+| Backups | da Hostinger, semanais (15/11 e 22/11), restauram a VM inteira. **Sem snapshot.** Sem grupo de firewall |
+| ⚠️ Segurança | o `.env` guarda `OWNER_PASSWORD` em texto puro (senha do dono, usada só no primeiro bootstrap). **Recomendado: trocar a senha e apagar a linha.** O MCP devolve o `.env` inteiro em leitura — os segredos não foram reproduzidos em arquivo nenhum |
 | Fora do escopo | Evolution (a API publica 8080 em 0.0.0.0 — vale revisar) e n8n + Traefik |
 
-- **Plano de migração:** `docs/runbooks/distro-oianmaxdev-implantacao.md`.
-  - Pré-requisitos, inventário e backup: snapshot, `backup.sh`, configuração e sessões do WAHA fora da VPS, e restauração testada em ambiente isolado.
-  - Transição da instalação oficial para a distribuição: checkout do kit da distribuição antes do `update.sh --force`, porque o pré-voo usa o namespace de imagens do kit que está em disco.
-  - Verificações e critérios de interrupção.
-  - Rollback de aplicação, de configuração e de banco, sem nunca restaurar por cima.
-  - Plano do piloto.
-- **Impacto esperado:** alguns minutos de indisponibilidade do CRM. Nada é compilado na VPS. O Supervisor nasce desligado.
+O que só o SSH responde (não bloqueia, mas vale conferir na janela): `git status` limpo em
+`/opt/deskcommcrm`, `docker buildx version` e o crontab do agente.
 
 ## E. Homologação
 
-Rodadas locais em 2026-11-26 (WSL2, 9 GB, 4 núcleos), na branch `distro/integracao/1.126.0`.
+### E.1 CI do fork (GitHub Actions)
 
-| Gate | Comando | Resultado |
+| Onde | Resultado |
+|---|---|
+| PR #1 (integração) | **os 5 gates verdes**: `verify` (typecheck completo, lint, `test:unit`), `invariants` (Postgres 15 e 17), `build-and-size`, `e2e` (todas as partes, incluindo `supervisor-comercial.spec.ts`), `imagens-ok`. Três rodadas: a 1ª e a 2ª acharam defeitos reais que a suíte local não pegava (`lint:channels`, LGPD Art. 18 II, fixtures tipadas, entrada duplicada de branding, seed e login com MFA na spec E2E) — todos corrigidos |
+| `main` do fork (merge `1b15faeff`) | 5 gates verdes |
+| Release `v1.126.1001` | **prerelease** publicada pelo `distro-release` com gates exigidos; 4 imagens em amd64+arm64, **públicas** (pull anônimo 200), `revision` = commit da tag, `source` = o fork |
+| Instabilidade conhecida | a perna Postgres 17 de `invariants` bateu no teto de 45 min duas vezes (no fork não há o executor próprio do upstream); passou ao re-rodar. O teto **não** foi subido: a regra escrita no repositório manda investigar antes |
+| PR #2 (`v1.126.1002`) | **sem CI**: o GitHub desligou as Actions do fork de novo (`Actions has been disabled for this repository`, 27/11 ~00h UTC). Verificado localmente: `test:shell` completo, guardas do kit |
+
+### E.2 Simulações numa VPS isolada
+
+Ambiente: contêiner Ubuntu 24.04 com Docker próprio (docker-in-docker), Traefik na rede
+`n8n_default` como o da Hostinger, Supabase local **novo** no lugar do da nuvem, a instalação
+**oficial 1.110.0** com as imagens oficiais, 20 contatos / 20 conversas / 200 mensagens / 20 negócios
+**sintéticos**. Nenhum contato com produção, nenhuma mensagem enviada.
+
+| # | Cenário | Resultado |
 |---|---|---|
-| Suíte unitária completa | `pnpm test:unit` | 4.183 arquivos / 49.286 testes: **7 arquivos reprovados**. Rodados sozinhos, 2 eram tempo estourado (passaram); **5 eram guardas reais do upstream** que a Feature C não cumpria (cron, organização parada, varredura de anon, espanhol, leitores de mídia) — **corrigidas** (`d0390e9a6`) e re-verificadas: 50 arquivos / 522 testes. **A suíte inteira não foi rodada de novo depois da correção** |
-| Banco completo | `pnpm test:db` (`CONFERENCIA_KIT_RELEASE=v1.126.0`) | 726 arquivos / 6.057 testes: baseline install e update OK; conferência do kit OK (212 regras, inclusive com o `update.sh` da v1.126.0 e da v1.63.0); **2 reprovados**: catálogo de LGPD (tabelas do Supervisor sem decisão — **corrigido** com gatilho no banco, `d0390e9a6`, **não re-verificado: o Docker caiu**) e `metricas-cortam-pela-janela` (custo medido de uma função oficial que a Feature C não toca; provável efeito de carga, **não re-verificado**) |
-| Invariantes do Supervisor | `pnpm test:db tests/invariants/supervisor-*` | 32 testes passaram (fila justa e isolamento), antes das últimas mudanças de LGPD |
-| Testes de shell / kit | `pnpm test:shell` | **passou** (exit 0) |
-| Typecheck | `pnpm typecheck` | **não roda nesta máquina** (estoura 6 GB). Rodado restrito a todo arquivo que a distribuição toca: 2 erros achados e corrigidos (`52e89164e`), depois limpo. O completo depende do CI |
-| Lint | `eslint` nos arquivos tocados | limpo |
-| Testes do Supervisor | `vitest lib/supervisor` | todos passam (fila, concorrência, retomada, omissão, diário, diagnóstico, PDF) |
-| Workflows | actionlint | sem erros |
-| E2E | `tests/e2e/supervisor-comercial.spec.ts` | escrito e registrado; **não executado** (precisa do CI ou de `pnpm e2e:env && pnpm e2e:build` locais) |
-| Build das imagens | `publish-image.yml` | **não executado**: Actions do fork desligadas |
-| Prova real no PostgREST | compare-and-set em jsonb | provado (casa com o atual, recusa o antigo) |
+| 1 | Backup do runbook §2.3 | ok — e achou que o `.tgz` de configuração nascia **644 com segredos** → runbook com `umask 077` |
+| 2 | Transição 1.110.0 → `v1.126.1001`, runbook literal (checkout manual + `--force`) | passou (3 min), dados intactos — **mas** registrou a própria versão nova como "anterior" |
+| 3 | Mesma transição, kit da distribuição em cópia externa (método novo) | **passou em 1m24s** sem `--force`; volta automática registrada para `v1.110.0`; crontab aponta para o kit do clone |
+| 4 | Verificação pela tela (navegador real) | login, Inbox (20 conversas), CRM, **Supervisor desligado**, Configurações › Atualização com "Versão instalada: 1.126.1001" |
+| 5 | Dados e schema depois | contagens idênticas; 4 tabelas `supervisor_*`, funções e gatilho LGPD; `supervisor_settings` vazio |
+| 6 | Rollback manual para a 1.110.0 oficial | **51 s**, dados intactos, 1.110.0 saudável sobre o banco já atualizado |
+| 7 | **App cai logo depois da atualização → volta automática do vigia** | **FALHOU na `v1.126.1001`**: procurava `oianmaxdev/*:1.110.0`, recusava, **app fora do ar**. Corrigido (`ns_da_versao`/`img_ref`, PR #2) e provado com o mesmo comando do vigia: volta à 1.110.0 oficial em 1m31s |
+| 8 | Versão sem imagens publicadas | recusa em 4 s, nada muda (a mensagem diz "DNS/rede" — texto oficial) |
+| 9 | Falha de migração (função conflitante plantada) | para em 76 s **antes** de trocar imagens; 1.110.0 no ar; o código fica na versão nova → runbook manda `git checkout v1.110.0` |
+| 10 | Restauração do backup num banco vazio (§2.4) | **23 s**, 250 tabelas conferidas, contagens idênticas, login ok |
+| — | `buildx` ausente | o pré-voo recusa sem mexer em nada → runbook ganhou a checagem `docker buildx version` |
+| — | Traefik reiniciado na janela do vigia | um 503 passageiro conta como queda e dispara a volta → runbook: não reiniciar o proxy nos minutos seguintes |
 
-**Simulações da distribuição (10 pedidas):** nenhuma executada de ponta a ponta — dependem das
-imagens publicadas. Cobertura parcial pelos testes de shell oficiais que passaram (preflight e
-rollback da atualização, identidade de imagem em runtime, release publicada ≠ maior tag, isolamento
-do kit) e pelos invariantes de update do baseline. A transição oficial → distribuição foi analisada
-no código (o pré-voo usa o `IMG_NS` do kit em disco) e o runbook a contorna, mas **não foi simulada**.
+**Não executados (dependem das Actions):** CI do PR #2, release `v1.126.1002`, atualização
+personalizada → personalizada (`1001 → 1002`), conflito no `distro-acompanhar-upstream` e gate
+reprovando o `distro-release` em execução real. A volta automática corrigida foi provada com o kit do
+PR #2 rodando de fora do clone; dentro do clone ela só existe a partir da `v1.126.1002`.
 
-**Bloqueadores para produção**
-1. Actions do fork desligadas (sem CI, sem imagens, sem release).
-2. Typecheck completo, suíte completa e `test:db` completo de novo sobre `52e89164e`, no CI.
-3. E2E do Supervisor e build das 4 imagens, no CI.
-4. Simulação da transição 1.110.0 → `v1.126.1001` com o kit antigo, em ambiente isolado.
-5. Pacotes do GHCR públicos.
-6. Confirmar por SSH o `.env` (`REVERSE_PROXY`, host do banco) e os volumes (runbook §1).
+### E.3 Local
+
+`test:shell` completo verde sobre o PR #2; `test:db` dos invariantes afetados (LGPD, definers,
+Supervisor) verde no Postgres real; typecheck restrito dos arquivos tocados limpo.
 
 ## F. Para a sua operação
 
 1. **Novas versões oficiais:** a cada 6 horas o GitHub confere se saiu release estável nova do Deskcomm. Se saiu, ele mistura a versão nova com as suas funcionalidades numa branch separada e abre um PR com os testes rodando. Nada chega à sua VPS sozinho.
-2. **Quando houver conflito:** o processo para. Nada é publicado e a VPS segue na versão atual. Aparece um PR rascunho dizendo quais arquivos conflitaram e o comando para resolver. Alguém (eu numa sessão, ou um dev) resolve preservando os dois lados.
-3. **Atualizar pela interface:** depois que uma versão é **promovida** (workflow `distro-promover`, o seu "aprovo"), ela aparece em **Configurações → Atualização** como sempre. O botão usa o atualizador oficial: backup, troca, verificação e volta automática se não subir.
-4. **Nova funcionalidade sua:** entra por PR na `main` do fork, com as migrations na faixa 5xxx e uma linha em `.github/distro/funcionalidades.md`. Depois, `distro-release` com a próxima revisão (ex.: `v1.126.1002`).
-5. **Voltar versão:** a tela ou o `update.sh --to <versão> --force` voltam a aplicação. O banco não volta junto, porque as mudanças são aditivas e inofensivas. Recuperar banco é procedimento separado, nunca automático (runbook §4).
-6. **Para autorizar a primeira implantação:**
-   1. religar as Actions do fork;
-   2. ver os gates verdes no PR #1 e fazer o merge;
-   3. rodar `distro-release` (`v1.126.1001`);
-   4. tornar os pacotes do GHCR públicos;
-   5. aprovar a janela, o snapshot e a execução do runbook.
+2. **Quando houver conflito:** o processo para. Nada é publicado e a VPS segue na versão atual. Aparece um PR rascunho dizendo quais arquivos conflitaram.
+3. **Atualizar pela interface:** depois que uma versão é **promovida** (workflow `distro-promover`, o seu "aprovo"), ela aparece em **Configurações → Atualização**. Uma prerelease não aparece ali.
+4. **Nova funcionalidade sua:** entra por PR na `main` do fork, com migrations na faixa 5xxx e uma linha em `.github/distro/funcionalidades.md`. Depois, `distro-release` com a próxima revisão.
+5. **Voltar versão:** automática se o app não subir ou cair logo depois (a partir da `v1.126.1002`); manual pelos pins (runbook §4.1), porque o `update.sh` recusa downgrade. O banco não volta junto: as mudanças são aditivas.
+6. **O que falta para a implantação:**
+   1. religar as Actions do fork (ver abaixo);
+   2. CI verde no PR #2 → merge → `distro-release v1.126.1002`;
+   3. ensaio rápido `1001 → 1002` e da volta automática na simulação (o ambiente está pronto);
+   4. **sua autorização** para a janela: snapshot, backup e o runbook §3 com `v1.126.1002`.
 
 ## G. Ferramentas e skills
 

@@ -868,10 +868,10 @@ PIN_FALTANDO_ANTES="$(pin_incompleto .env)"
 armar_rollback_de_versao .env
 
 VERSAO_ALVO="${TARGET_TAG#v}"
-export APP_IMAGE="${IMG_APP}:${VERSAO_ALVO}"
-export WORKER_IMAGE="${IMG_WORKER}:${VERSAO_ALVO}"
-export SCHEDULER_IMAGE="${IMG_SCHEDULER}:${VERSAO_ALVO}"
-export VOICE_AGENT_IMAGE="${IMG_VOICE_AGENT}:${VERSAO_ALVO}"
+export APP_IMAGE="$(img_ref deskcommcrm "$VERSAO_ALVO")"
+export WORKER_IMAGE="$(img_ref deskcomm-worker "$VERSAO_ALVO")"
+export SCHEDULER_IMAGE="$(img_ref deskcomm-scheduler "$VERSAO_ALVO")"
+export VOICE_AGENT_IMAGE="$(img_ref deskcomm-voice-agent "$VERSAO_ALVO")"
 # ── A IDENTIDADE DO BUILD QUE O `up -d` FAZ SOZINHO (#5196) ─────────────────
 #
 # Worker, scheduler e voice-agent têm `build:` ao lado do `image:` e o Compose

@@ -911,7 +911,7 @@ REGRAS_FALTANDO="${REGRAS_FALTANDO:-}"
 veredito_da_imagem_do_app() {  # veredito_da_imagem_do_app <versão alvo> <versão instalada>
   local alvo="${1:-}" instalada="${2:-}"
   [ -n "$alvo" ] || { printf 'indisponivel'; return 0; }
-  if docker buildx imagetools inspect "${IMG_APP}:${alvo}" >/dev/null 2>&1; then
+  if docker buildx imagetools inspect "$(img_ref deskcommcrm "$alvo")" >/dev/null 2>&1; then
     printf 'publicada'; return 0
   fi
   # ⛔ A SONDA DE CONTROLE, e é ela que impede o conserto de virar defeito pior.
@@ -926,7 +926,7 @@ veredito_da_imagem_do_app() {  # veredito_da_imagem_do_app <versão alvo> <vers�
   # não dá para separar as duas causas, e a resposta certa é a que não tira nada
   # de ninguém: segue anunciando, como sempre foi.
   [ -n "$instalada" ] || { printf 'indisponivel'; return 0; }
-  if docker buildx imagetools inspect "${IMG_APP}:${instalada}" >/dev/null 2>&1; then
+  if docker buildx imagetools inspect "$(img_ref deskcommcrm "$instalada")" >/dev/null 2>&1; then
     printf 'ausente'
   else
     printf 'indisponivel'
@@ -1223,9 +1223,9 @@ veredito_das_imagens_da_release() {  # veredito_das_imagens_da_release <versão 
   versao="${versao#v}"
   instalada="${instalada#v}"
   [ -n "$versao" ] || { printf 'indisponivel'; return 0; }
-  for img in "$IMG_APP" "$IMG_WORKER" "$IMG_SCHEDULER" "$IMG_VOICE_AGENT"; do
+  for img in deskcommcrm deskcomm-worker deskcomm-scheduler deskcomm-voice-agent; do
     total=$((total + 1))
-    if com_prazo 20 docker buildx imagetools inspect "${img}:${versao}" >/dev/null 2>&1; then
+    if com_prazo 20 docker buildx imagetools inspect "$(img_ref "$img" "$versao")" >/dev/null 2>&1; then
       achadas=$((achadas + 1))
       continue
     fi
@@ -1238,7 +1238,7 @@ veredito_das_imagens_da_release() {  # veredito_das_imagens_da_release <versão 
     # está rodando aqui. Se nem ela responde, o que está fora é o registro, não
     # a imagem; e aí esconder a atualização seria ligar o silêncio da tela a um
     # problema de rede que ninguém vê.
-    if [ -n "$instalada" ] && com_prazo 20 docker buildx imagetools inspect "${img}:${instalada}" >/dev/null 2>&1; then
+    if [ -n "$instalada" ] && com_prazo 20 docker buildx imagetools inspect "$(img_ref "$img" "$instalada")" >/dev/null 2>&1; then
       ausentes=$((ausentes + 1))
       IMAGENS_SEM_RESPOSTA="${IMAGENS_SEM_RESPOSTA} ${img##*/}:ausente"
     else
@@ -2645,6 +2645,29 @@ IMG_SCHEDULER="${IMG_NS}/deskcomm-scheduler"
 # imagem NOSSA e segue a mesma versão das outras três (gravar_imagens).
 IMG_VOICE_AGENT="${IMG_NS}/deskcomm-voice-agent"
 
+# ── Distribuição oianmaxdev: QUEM publicou a versão decide o registro ───────
+# A distribuição numera as próprias versões com patch >= 1000 (v1.126.1001); as
+# versões oficiais (patch < 1000) só existem no registro OFICIAL. Sem esta regra,
+# voltar de uma versão da distribuição para uma oficial — a volta automática do
+# vigia depois da primeira transição, ou um `update.sh --to v1.110.0` — procurava
+# `<fork>/deskcommcrm:1.110.0`, que não existe: o pré-voo recusava e o app ficava
+# FORA DO AR (medido na simulação de 26/11/2026, docs/audits/2026-11-26-*).
+# Canal móvel (latest/main/stable) e versão sem número seguem o `IMG_NS`.
+IMG_NS_OFICIAL="ghcr.io/melgarafael"
+ns_da_versao() {  # <versao, com ou sem "v"> → namespace que publicou essa versão
+  local v="${1#v}" patch
+  case "$v" in ""|latest|main|stable) printf '%s' "$IMG_NS"; return 0 ;; esac
+  patch="${v##*.}"; patch="${patch%%[!0-9]*}"
+  if [ -n "$patch" ] && [ "$patch" -lt 1000 ] 2>/dev/null; then
+    printf '%s' "$IMG_NS_OFICIAL"
+  else
+    printf '%s' "$IMG_NS"
+  fi
+}
+img_ref() {  # img_ref <repo> <versão> → referência completa no registro que publicou a versão
+  printf '%s/%s:%s' "$(ns_da_versao "$2")" "$1" "${2#v}"
+}
+
 # A última versão publicada (ex.: "1.2.1"), ou vazio se não deu para saber.
 #
 # Consulta o REMOTO, não o clone: o install.sh clona com `--depth 1`, que não
@@ -2849,7 +2872,7 @@ completar_pin_ausente() {  # completar_pin_ausente [envfile]
     # `<no value>` = imagem sem o label (build local). Canal não é versão.
     case "$ver" in ""|"<no value>"|latest|main|stable) continue ;; esac
 
-    set_env_var "$envfile" "$chave" "${IMG_NS}/${repo}:${ver}"
+    set_env_var "$envfile" "$chave" "$(ns_da_versao "$ver")/${repo}:${ver}"
     set_env_var "$envfile" "${chave%_IMAGE}_PULL_POLICY" missing
     corrigidos="$corrigidos $svc"
   done
@@ -2905,22 +2928,23 @@ reexportar_pull_policies() {  # reexportar_pull_policies <envfile>
 #   gravar_imagens .env 1.2.1   → pinado,  pull_policy=missing
 #   gravar_imagens .env latest  → canal,   pull_policy=always
 gravar_imagens() {
-  local envfile="$1" versao="$2" politica
+  local envfile="$1" versao="$2" politica ns
+  ns="$(ns_da_versao "$versao")"
   case "$versao" in
     latest|main|stable) politica="always" ;;
     *)                  politica="missing" ;;
   esac
-  set_env_var "$envfile" APP_IMAGE             "${IMG_APP}:${versao}"
+  set_env_var "$envfile" APP_IMAGE             "${ns}/deskcommcrm:${versao}"
   set_env_var "$envfile" APP_PULL_POLICY       "$politica"
-  set_env_var "$envfile" WORKER_IMAGE          "${IMG_WORKER}:${versao}"
+  set_env_var "$envfile" WORKER_IMAGE          "${ns}/deskcomm-worker:${versao}"
   set_env_var "$envfile" WORKER_PULL_POLICY    "$politica"
-  set_env_var "$envfile" SCHEDULER_IMAGE       "${IMG_SCHEDULER}:${versao}"
+  set_env_var "$envfile" SCHEDULER_IMAGE       "${ns}/deskcomm-scheduler:${versao}"
   set_env_var "$envfile" SCHEDULER_PULL_POLICY "$politica"
   # A quarta imagem só é puxada com o profile `telefonia` ligado — compose não
   # puxa serviço de profile inativo. Gravá-la sempre é o que garante que, no
   # dia em que o dono ligar a telefonia, ela suba na MESMA versão do resto, e
   # não no `stable` móvel do default do compose.
-  set_env_var "$envfile" VOICE_AGENT_IMAGE       "${IMG_VOICE_AGENT}:${versao}"
+  set_env_var "$envfile" VOICE_AGENT_IMAGE       "${ns}/deskcomm-voice-agent:${versao}"
   set_env_var "$envfile" VOICE_AGENT_PULL_POLICY "$politica"
   # Os `*_PULL_POLICY` também, e AQUI dentro pela mesma razão do WAHA (abaixo):
   # o `.env` acabou de mudar, mas o ambiente do processo ainda tem o valor do

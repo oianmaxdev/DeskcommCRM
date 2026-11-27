@@ -45,7 +45,9 @@ chmod +x "$WORK/bin/docker"
 # O namespace vem de `_common.sh` (fonte única): escrevê-lo à mão aqui deixaria a
 # catraca de `tests/unit/namespace-das-imagens.test.ts` vermelha — e, pior, um
 # namespace errado ficaria verde nos dois lugares.
-NS="$(bash -c 'source "$0/_common.sh" >/dev/null 2>&1; printf "%s" "$IMG_NS"' "$KIT_DIR")"
+# Distribuição: as versões destes casos (1.108/1.109) são oficiais, e o kit as
+# procura no registro de quem as publicou (ns_da_versao) — o dublê responde lá.
+NS="$(bash -c 'source "$0/_common.sh" >/dev/null 2>&1; ns_da_versao 1.109.0' "$KIT_DIR")"
 APP="$NS/deskcommcrm"; WORKER="$NS/deskcomm-worker"; SCHED="$NS/deskcomm-scheduler"; VOZ="$NS/deskcomm-voice-agent"
 
 veredito() {  # veredito <referências que existem> <alvo> [instalada]

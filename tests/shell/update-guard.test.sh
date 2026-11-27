@@ -47,6 +47,9 @@ export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t.t GIT_COMMITTER_NAME=t GIT_COMMITT
 # confere que o compose, o `.env` de exemplo e o workflow de publicação dizem o
 # mesmo. Se você veio parar aqui procurando a guarda do namespace, é lá.
 NS="$(sed -n 's/^IMG_NS="\(.*\)"$/\1/p' "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../hostgator-setup-kit" && pwd)/_common.sh" | head -1)"
+# Distribuição: versão oficial (patch < 1000, como 1.1.0 e 1.3.0 destes casos)
+# vem do registro oficial — `ns_da_versao` em _common.sh. Lido do arquivo, nunca à mão.
+NS_OFICIAL="$(sed -n 's/^IMG_NS_OFICIAL="\(.*\)"$/\1/p' "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../hostgator-setup-kit" && pwd)/_common.sh" | head -1)"
 [ -n "$NS" ] || { echo "não consegui ler IMG_NS de _common.sh"; exit 1; }
 # Exportado porque o dublê de `docker` (escrito mais abaixo num heredoc quoted)
 # resolve $NS em tempo de execução, já dentro de outro processo.
@@ -294,7 +297,7 @@ echo nova > nova.txt; git add -A; git commit --quiet -m "v1.1.0"; git tag v1.1.0
 git checkout --quiet v0.9.0
 run_update --to v1.1.0
 check "a atualização termina com sucesso" test "$RC" -eq 0
-check ".env aponta para a imagem da versão instalada" grep -q "^APP_IMAGE=${NS}/deskcommcrm:1.1.0$" .env
+check ".env aponta para a imagem da versão instalada" grep -q "^APP_IMAGE=${NS_OFICIAL}/deskcommcrm:1.1.0$" .env
 check "a chave APP_IMAGE não duplicou" test "$(grep -c '^APP_IMAGE=' .env)" -eq 1
 # A ida para frente guarda de onde saiu: é o único alvo de volta que o agente
 # do host aceita do app (agent.sh). A reinstalação da mesma versão não regrava.
@@ -328,9 +331,9 @@ echo "── 4b. As três imagens sobem juntas, na mesma versão"
 # runtime do agente de IA — ficava congelado no código do dia da instalação.
 # Se estas três linhas voltarem a divergir, o defeito voltou.
 check "o worker é pinado na MESMA versão do app" \
-  grep -q "^WORKER_IMAGE=${NS}/deskcomm-worker:1.1.0$" .env
+  grep -q "^WORKER_IMAGE=${NS_OFICIAL}/deskcomm-worker:1.1.0$" .env
 check "o scheduler é pinado na MESMA versão do app" \
-  grep -q "^SCHEDULER_IMAGE=${NS}/deskcomm-scheduler:1.1.0$" .env
+  grep -q "^SCHEDULER_IMAGE=${NS_OFICIAL}/deskcomm-scheduler:1.1.0$" .env
 check "o worker herda a política da tag imutável" \
   grep -q '^WORKER_PULL_POLICY=missing$' .env
 check "o scheduler herda a política da tag imutável" \
@@ -642,7 +645,7 @@ autopin() {  # autopin <conteúdo do .env> → ecoa o que a função corrigiu
 R="$(autopin "APP_IMAGE=${NS}/deskcommcrm:1.3.0")"
 check "chave AUSENTE → preenche os dois" test "$R" = "worker scheduler"
 check "  e grava a versão da imagem em execução, não um canal" \
-  grep -q "^WORKER_IMAGE=${NS}/deskcomm-worker:1.3.0$" "$PIN_DIR/.env"
+  grep -q "^WORKER_IMAGE=${NS_OFICIAL}/deskcomm-worker:1.3.0$" "$PIN_DIR/.env"
 check "  com pull_policy de tag imutável" \
   grep -q "^WORKER_PULL_POLICY=missing$" "$PIN_DIR/.env"
 
@@ -936,6 +939,27 @@ check "  e a recusa diz que as chaves foram a única mudança" grep -q "Não mex
 run_update --to v0.9.0
 check "recusa com o par já presente: não reinicia nada" bash -c "! grep -q 'up -d --no-deps app worker' '$DOCKER_LOG'"
 check "  e diz só 'Não mexi em nada', sem citar as chaves" bash -c "grep -q 'Não mexi em nada: nem no banco' '$OUTFILE' && ! grep -q 'além das chaves' '$OUTFILE'"
+
+echo "── Distribuição: o registro sai da versão (ns_da_versao)"
+# A volta automática de uma versão da distribuição para uma oficial procurava a
+# imagem oficial no registro do fork e deixava o app fora do ar (simulação de
+# 26/11/2026). Versão oficial = registro oficial; patch >= 1000 = distribuição.
+TMP_NSV="$(mktemp)"
+NSV() { bash -c ". '$KIT_DIR_TESTE/_common.sh' >/dev/null 2>&1; ns_da_versao '$1'"; }
+check "o registro oficial existe e é outro" bash -c "[ -n '$NS_OFICIAL' ] && [ '$NS_OFICIAL' != '$NS' ]"
+check "versão oficial vem do registro oficial (1.110.0)" test "$(NSV 1.110.0)" = "$NS_OFICIAL"
+check "  com o v na frente também (v1.126.0)" test "$(NSV v1.126.0)" = "$NS_OFICIAL"
+check "versão da distribuição vem do registro dela (1.126.1001)" test "$(NSV 1.126.1001)" = "$NS"
+check "canal móvel segue o registro do kit (stable)" test "$(NSV stable)" = "$NS"
+IREF() { bash -c ". '$KIT_DIR_TESTE/_common.sh' >/dev/null 2>&1; img_ref '$1' '$2'"; }
+check "img_ref: a volta para a oficial monta a referência oficial" \
+  test "$(IREF deskcommcrm v1.110.0)" = "$NS_OFICIAL/deskcommcrm:1.110.0"
+check "img_ref: a versão da distribuição monta a do fork" \
+  test "$(IREF deskcomm-worker v1.126.1002)" = "$NS/deskcomm-worker:1.126.1002"
+check "nenhum ponto do kit monta referência de versão com IMG_APP/WORKER/SCHEDULER/VOZ" \
+  bash -c "! grep -nE '\\\$\\{IMG_(APP|WORKER|SCHEDULER|VOICE_AGENT)\\}:\\\$' '$KIT_DIR_TESTE'/update.sh '$KIT_DIR_TESTE'/install.sh '$KIT_DIR_TESTE'/_common.sh"
+check "o pré-voo de uma versão oficial confere o registro oficial" \
+  bash -c ". '$KIT_DIR_TESTE/_common.sh' >/dev/null 2>&1; . '$KIT_DIR_TESTE/_manifestos.sh' >/dev/null 2>&1; ghcr_status() { printf '%s' \"\$IMG_NS\" > '$TMP_NSV'; printf 200; }; manifesto_tem_plataforma() { return 0; }; preflight_imagens_crm 1.110.0 linux/amd64 && grep -qx '$NS_OFICIAL' '$TMP_NSV'"
 
 if [ "$FAILS" -eq 0 ]; then echo "OK — todas as provas passaram."; else echo "FALHOU — $FAILS prova(s)."; fi
 exit $((FAILS > 0))

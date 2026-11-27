@@ -39,6 +39,9 @@ RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # O namespace das imagens, lido da FONTE (_common.sh) em vez de repetido aqui.
 NS="$(sed -n 's/^IMG_NS="\(.*\)"$/\1/p' "$RAIZ/hostgator-setup-kit/_common.sh" | head -1)"
 [ -n "$NS" ] || { echo "não consegui ler IMG_NS de _common.sh"; exit 1; }
+# Distribuição: 0.9.0 é numeração oficial (patch < 1000) → registro oficial (ns_da_versao).
+NS_OFICIAL="$(sed -n 's/^IMG_NS_OFICIAL="\(.*\)"$/\1/p' "$RAIZ/hostgator-setup-kit/_common.sh" | head -1)"
+[ -n "$NS_OFICIAL" ] || { echo "não consegui ler IMG_NS_OFICIAL de _common.sh"; exit 1; }
 export NS
 
 falhas=0
@@ -390,7 +393,7 @@ if grep -qE ' (created|exited)$' "$DUB/estado.txt"; then
 else
   ok "app, worker, scheduler e proxy saíram SAUDÁVEIS"
 fi
-if grep -q "^APP_IMAGE=$NS/deskcommcrm:0.9.0$" "$R3/deskcommcrm/.env"; then
+if grep -q "^APP_IMAGE=$NS_OFICIAL/deskcommcrm:0.9.0$" "$R3/deskcommcrm/.env"; then
   ok "sem rollback: o .env ficou na versão nova (0.9.0)"
 else
   nao ".env na versão nova" "APP_IMAGE=:0.9.0" "$(grep '^APP_IMAGE=' "$R3/deskcommcrm/.env")"

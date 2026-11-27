@@ -51,6 +51,8 @@ manifesto_tem_plataforma() { # <ref> <linux/platform>
 preflight_imagens_crm() { # <tag> <linux/platform>; IMG_NS e ghcr_status vêm de _common.sh
   local tag="${1:-}" plataforma="${2:-}" img status ref
   [ -n "$tag" ] || { printf 'Versão de imagem vazia\n' >&2; return 1; }
+  # Escopo dinâmico: `ghcr_status`, chamada abaixo, lê este IMG_NS — o da versão.
+  local IMG_NS; IMG_NS="$(ns_da_versao "$tag")"
   for img in deskcommcrm deskcomm-worker deskcomm-scheduler deskcomm-voice-agent; do
     ref="${IMG_NS}/${img}:${tag}"
     status="$(ghcr_status "$img" "$tag")"

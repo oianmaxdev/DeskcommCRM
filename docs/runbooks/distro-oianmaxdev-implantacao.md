@@ -77,8 +77,8 @@ Guarde a saída: os **digests atuais** são o caminho de volta da aplicação (�
 
 ```bash
 cd /opt/deskcommcrm
-bash hostgator-setup-kit/backup.sh                       # dump do banco (o mesmo que o update.sh faz)
-sudo tar czf ~/deskcomm-config-$(date +%F).tgz .env docker-compose*.yml   # contém SEGREDOS
+bash hostgator-setup-kit/backup.sh                       # dump do banco + sessões do WAHA (backups/db-*.sql.gz e waha-*.tgz)
+(umask 077; sudo tar czf ~/deskcomm-config-$(date +%F).tgz .env docker-compose*.yml)   # contém SEGREDOS: sem o umask o arquivo nasce 644 (medido)
 docker run --rm -v deskcommcrm_waha-data:/d -v ~/:/b alpine tar czf /b/waha-sessoes-$(date +%F).tgz -C /d .
 ```
 
@@ -96,41 +96,55 @@ Nunca aponte esse ambiente para o banco de produção.
 ## 3. Implantação (janela de manutenção)
 
 1. **Janela**: horário de menor movimento; avise a equipe que o CRM ficará até ~15 min indisponível.
-2. **Apontar o clone para o fork** (é o que faz a tela Configurações → Atualização e o `update.sh`
-   passarem a ver as releases da distribuição) e **trocar o kit em disco pelo da distribuição**:
+2. **Pré-checagem do Docker** (só leitura): `docker buildx version` precisa responder. O pré-voo do
+   kit confere as imagens no registro com o `buildx`; sem ele, a atualização recusa antes de mexer em
+   qualquer coisa (medido na simulação, com o Docker do pacote `docker.io` do Ubuntu).
+3. **Apontar o clone para o fork e rodar o kit DA DISTRIBUIÇÃO a partir de uma cópia externa** — o
+   clone continua na versão oficial instalada até o próprio `update.sh` trocá-lo:
 
    ```bash
    cd /opt/deskcommcrm
    git status --porcelain            # precisa sair VAZIO; se não, pare e investigue
+   git describe --tags --exact-match # v1.110.0 — é a versão para onde a volta automática retorna
    git remote set-url origin https://github.com/oianmaxdev/DeskcommCRM.git
    git fetch --tags origin
-   git checkout v1.126.1001          # só código e kit; o app segue rodando a imagem antiga
+   rm -rf /opt/deskcomm-kit-distro && mkdir -p /opt/deskcomm-kit-distro
+   git archive v1.126.1002 hostgator-setup-kit | tar x -C /opt/deskcomm-kit-distro
+   bash /opt/deskcomm-kit-distro/hostgator-setup-kit/update.sh --to v1.126.1002
    ```
 
-   **Por que o checkout manual, só desta vez:** o `update.sh` confere as quatro imagens no registro
-   ANTES de trocar o código, usando o namespace (`IMG_NS`) do kit que está no disco. Rodado com o kit
-   oficial 1.110.0, ele procuraria `ghcr.io/melgarafael/*:1.126.1001`, que não existe, e recusaria
-   (sem estragar nada). Com o kit da distribuição no disco, o pré-voo e a gravação das imagens usam
-   `ghcr.io/oianmaxdev`. Das próximas vezes, o kit já é o da distribuição e isto não é necessário.
+   **Por que a cópia externa, só desta vez.** O pré-voo confere as quatro imagens no registro com o
+   namespace do kit em disco; o kit oficial 1.110.0 procuraria `melgarafael/*:1.126.1002`, que não
+   existe, e recusaria. Rodar o kit da distribuição de fora resolve isso **sem** tirar o clone da
+   1.110.0 antes da hora — e é isso que faz o kit registrar `v1.110.0` como a versão para onde a
+   **volta automática** retorna. A primeira versão deste runbook fazia `git checkout` manual antes do
+   `update.sh --force`: a transição funcionava, mas o kit registrava a própria versão nova como
+   "anterior", e a volta automática do vigia, se o app caísse depois, "voltava" para a mesma versão
+   quebrada (medido na simulação de 26/11/2026). O `update.sh` lê a pasta do projeto do diretório
+   corrente (`enter_project`), não da pasta do kit, e o crontab que ele instala aponta para o kit
+   DENTRO do clone (conferido) — a cópia externa não fica gravada em lugar nenhum.
 
-3. **Atualizar com o atualizador oficial** (backup, pré-voo das quatro imagens, reaplicação do
-   baseline, troca das imagens, healthcheck e volta automática da imagem se o app não subir). O
-   `--force` é o caminho previsto pelo próprio kit para "código já na versão, imagem antiga":
+   **Versão mínima: `v1.126.1002`.** A `v1.126.1001` tem o defeito que a simulação achou: voltar de
+   uma versão da distribuição para uma oficial procurava a imagem oficial no registro do fork, e o
+   app ficava fora do ar. A partir da 1002 o kit escolhe o registro pela versão (`ns_da_versao`).
 
-   ```bash
-   bash hostgator-setup-kit/update.sh --to v1.126.1001 --force
-   ```
-
-   Se o passo 3 parar antes de trocar as imagens, volte o código: `git checkout -` (o app nunca saiu
-   da imagem antiga).
+   Se o `update.sh` recusar no pré-voo, nada foi parado nem baixado: o clone segue na 1.110.0 e o
+   app também. Volte o remote (`git remote set-url origin https://github.com/melgarafael/DeskcommCRM.git`)
+   e investigue.
 
    Com `REVERSE_PROXY=traefik` no `.env`, todo `docker compose` do kit leva
    `-f docker-compose.prod.yml -f docker-compose.traefik.yml`. **Não rode `docker compose up -d` à mão
    sem os dois `-f`**: o domínio responderia 404.
-4. **Verificações**:
-   - `curl -sI https://<seu-domínio>` → **307** (redireciona para o login), nunca 404;
+   **Não reinicie o Traefik do n8n nos minutos seguintes à atualização**: o vigia do kit checa o app
+   pelo domínio público, e um 503 passageiro do proxy conta como app fora do ar (medido: dois
+   healthchecks falhos disparam a volta automática).
+5. **Verificações**:
+   - `curl -sI https://<seu-domínio>/app` → **307** para `/login?next=%2Fapp`, nunca 404. A raiz
+     (`/`) serve a página pública e responde **200** — medido na simulação; os dois servem de prova
+     de que o Traefik enxerga o contêiner;
+   - `curl -s https://<seu-domínio>/api/v1/health` → `"status":"healthy"` e `"version":"1.126.1002"`;
    - `docker compose ps` → app, worker e scheduler `healthy`;
-   - `docker inspect --format '{{.Config.Image}}' $(docker compose ps -q app)` → `ghcr.io/oianmaxdev/deskcommcrm:1.126.1001`;
+   - `docker inspect --format '{{.Config.Image}}' $(docker compose ps -q app)` → `ghcr.io/oianmaxdev/deskcommcrm:1.126.1002`;
    - na tela: login, Inbox, um funil, Agentes de IA, Configurações → Atualização mostrando a versão
      instalada;
    - canais: as sessões do WhatsApp (WAHA) continuam conectadas; mande e receba uma mensagem de teste
@@ -149,15 +163,30 @@ Nunca aponte esse ambiente para o banco de produção.
 
 ### 4.1 Aplicação (imagem)
 
-O `update.sh` já volta a imagem anterior sozinho quando o app não sobe. Para voltar à mão para a
-versão oficial anterior:
+**Automático.** O `update.sh` restaura as imagens anteriores sozinho quando o app não sobe (pela cópia
+dos pins do `.env`, não pelo git). Depois que ele termina, o **vigia** do agente acompanha o domínio:
+dois healthchecks seguidos falhando disparam a volta para a versão registrada como anterior
+(`v1.110.0`, se a transição seguiu a §3). A partir da `v1.126.1002`, essa volta busca as imagens
+oficiais no registro oficial.
+
+**Manual — para a versão oficial anterior** (ensaiado na simulação: 51 s, dados intactos, 1.110.0
+saudável sobre o banco já atualizado). O `update.sh --to <versão mais velha>` **recusa downgrade**,
+então a volta manual é pelos pins:
 
 ```bash
 cd /opt/deskcommcrm
-bash hostgator-setup-kit/update.sh --to v1.110.0 --force   # e, se a tag não existir no fork:
-git remote set-url origin https://github.com/melgarafael/DeskcommCRM.git && git fetch --tags origin
-bash hostgator-setup-kit/update.sh --to v1.110.0 --force
+git checkout v1.110.0                # a tag oficial já está no clone desde a instalação
+git remote set-url origin https://github.com/melgarafael/DeskcommCRM.git
+mkdir -p /tmp/cfg && tar xzf ~/deskcomm-config-<data>.tgz -C /tmp/cfg .env
+for k in APP_IMAGE WORKER_IMAGE SCHEDULER_IMAGE VOICE_AGENT_IMAGE; do
+  sed -i "s#^$k=.*#$(grep "^$k=" /tmp/cfg/.env)#" .env
+done
+docker compose -f docker-compose.prod.yml -f docker-compose.traefik.yml --env-file .env up -d
+rm -rf /tmp/cfg
 ```
+
+As imagens 1.110.0 continuam no disco depois da transição (conferido: a limpeza do kit não as
+removeu), então a volta não depende do registro.
 
 ### 4.2 Configuração
 

@@ -1,6 +1,6 @@
 # Runbook — implantar a distribuição oianmaxdev na VPS (Hostinger)
 
-> **Status:** preparado, **não executado**. Nenhum passo abaixo foi rodado na VPS de produção.
+> **Status:** preparado e **ensaiado numa VPS simulada** (relatório `docs/audits/2026-11-26-distribuicao-oianmaxdev.md` §E.2); **não executado em produção**.
 > A implantação depende de autorização explícita do dono, e da conclusão dos pré-requisitos da §0.
 > Os dados da VPS da §1 foram lidos pelo MCP da Hostinger (só leitura) em 2026-11-26, inclusive o
 > compose e o `.env` do projeto. Os segredos do `.env` **não** são reproduzidos aqui. O que só o SSH
@@ -8,18 +8,16 @@
 
 ## 0. Pré-requisitos (bloqueadores)
 
-1. **Actions do fork habilitadas.** Em 2026-11-26 o GitHub respondia "Actions has been disabled for
-   this repository" no fork `oianmaxdev/DeskcommCRM`. Na aba **Actions** do fork, clique em
-   "I understand my workflows, go ahead and enable them". Se não houver esse botão, confira
-   *Settings → Billing* da conta.
-2. **Gates verdes no PR interno** (`oianmaxdev/DeskcommCRM#1`): verify, invariants, build-and-size,
-   e2e e imagens-ok. Depois, merge na `main` do fork.
-3. **Release candidata publicada** pelo workflow `distro-release` (ex.: `v1.126.1001`) com as quatro
-   imagens em `ghcr.io/oianmaxdev/*`.
-4. **Pacotes do GHCR públicos.** Pacote novo nasce privado: em *Packages → cada pacote → Package
-   settings → Change visibility → Public*, para `deskcommcrm`, `deskcomm-worker`, `deskcomm-scheduler`
-   e `deskcomm-voice-agent`. A VPS puxa anonimamente.
-5. **Restauração testada** num ambiente isolado (§2.4).
+| # | Pré-requisito | Estado em 27/11/2026 |
+|---|---|---|
+| 1 | Actions do fork ligadas | ❌ **desligadas pelo GitHub** (`Actions has been disabled for this repository`) — religar na aba Actions; se o botão não aparecer, é bloqueio da conta (suporte do GitHub) |
+| 2 | Gates verdes e merge do PR #1 (integração) | ✅ 5 gates verdes; mesclado (`1b15faeff`) |
+| 3 | Gates verdes e merge do PR #2 (volta para a versão oficial) | ⏳ depende do item 1 |
+| 4 | Release candidata **`v1.126.1002`** pelo `distro-release` | ⏳ depende do item 3. A `v1.126.1001` existe, mas **não use**: a volta automática dela deixa o app fora do ar (§3) |
+| 5 | Pacotes do GHCR públicos | ✅ herdaram a visibilidade do repositório (pull anônimo 200) |
+| 6 | Restauração testada em ambiente isolado | ✅ simulação de 26/11/2026 (relatório §E.2, cenário 10) |
+| 7 | Ensaio da transição e das voltas | ✅ na `v1.126.1001` + kit do PR #2; ⏳ repetir com a `v1.126.1002` publicada (o ambiente de simulação está pronto) |
+| 8 | Autorização do dono para a janela | ⏳ |
 
 ## 1. A VPS — confirmado pelo MCP da Hostinger em 2026-11-26 (só leitura)
 

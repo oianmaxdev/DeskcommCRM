@@ -132,6 +132,11 @@ Nunca aponte esse ambiente para o banco de produção.
    app também. Volte o remote (`git remote set-url origin https://github.com/melgarafael/DeskcommCRM.git`)
    e investigue.
 
+   Se ele parar **no banco** ("O banco NÃO terminou limpo … A atualização PARA aqui"), as imagens não
+   foram trocadas e o app segue na 1.110.0 — mas o **código** já está na versão nova (o kit não volta
+   o checkout). Volte-o à mão: `git checkout v1.110.0`. Medido na simulação, com uma função
+   conflitante plantada no banco: parada em 76 s, 1.110.0 saudável o tempo todo.
+
    Com `REVERSE_PROXY=traefik` no `.env`, todo `docker compose` do kit leva
    `-f docker-compose.prod.yml -f docker-compose.traefik.yml`. **Não rode `docker compose up -d` à mão
    sem os dois `-f`**: o domínio responderia 404.

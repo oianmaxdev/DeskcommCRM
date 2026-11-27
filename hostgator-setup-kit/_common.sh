@@ -911,7 +911,7 @@ REGRAS_FALTANDO="${REGRAS_FALTANDO:-}"
 veredito_da_imagem_do_app() {  # veredito_da_imagem_do_app <versão alvo> <versão instalada>
   local alvo="${1:-}" instalada="${2:-}"
   [ -n "$alvo" ] || { printf 'indisponivel'; return 0; }
-  if docker buildx imagetools inspect "${IMG_APP}:${alvo}" >/dev/null 2>&1; then
+  if docker buildx imagetools inspect "$(img_ref deskcommcrm "$alvo")" >/dev/null 2>&1; then
     printf 'publicada'; return 0
   fi
   # ⛔ A SONDA DE CONTROLE, e é ela que impede o conserto de virar defeito pior.
@@ -926,7 +926,7 @@ veredito_da_imagem_do_app() {  # veredito_da_imagem_do_app <versão alvo> <vers�
   # não dá para separar as duas causas, e a resposta certa é a que não tira nada
   # de ninguém: segue anunciando, como sempre foi.
   [ -n "$instalada" ] || { printf 'indisponivel'; return 0; }
-  if docker buildx imagetools inspect "${IMG_APP}:${instalada}" >/dev/null 2>&1; then
+  if docker buildx imagetools inspect "$(img_ref deskcommcrm "$instalada")" >/dev/null 2>&1; then
     printf 'ausente'
   else
     printf 'indisponivel'
@@ -1223,9 +1223,9 @@ veredito_das_imagens_da_release() {  # veredito_das_imagens_da_release <versão 
   versao="${versao#v}"
   instalada="${instalada#v}"
   [ -n "$versao" ] || { printf 'indisponivel'; return 0; }
-  for img in "$IMG_APP" "$IMG_WORKER" "$IMG_SCHEDULER" "$IMG_VOICE_AGENT"; do
+  for img in deskcommcrm deskcomm-worker deskcomm-scheduler deskcomm-voice-agent; do
     total=$((total + 1))
-    if com_prazo 20 docker buildx imagetools inspect "${img}:${versao}" >/dev/null 2>&1; then
+    if com_prazo 20 docker buildx imagetools inspect "$(img_ref "$img" "$versao")" >/dev/null 2>&1; then
       achadas=$((achadas + 1))
       continue
     fi
@@ -1238,7 +1238,7 @@ veredito_das_imagens_da_release() {  # veredito_das_imagens_da_release <versão 
     # está rodando aqui. Se nem ela responde, o que está fora é o registro, não
     # a imagem; e aí esconder a atualização seria ligar o silêncio da tela a um
     # problema de rede que ninguém vê.
-    if [ -n "$instalada" ] && com_prazo 20 docker buildx imagetools inspect "${img}:${instalada}" >/dev/null 2>&1; then
+    if [ -n "$instalada" ] && com_prazo 20 docker buildx imagetools inspect "$(img_ref "$img" "$instalada")" >/dev/null 2>&1; then
       ausentes=$((ausentes + 1))
       IMAGENS_SEM_RESPOSTA="${IMAGENS_SEM_RESPOSTA} ${img##*/}:ausente"
     else
@@ -2663,6 +2663,9 @@ ns_da_versao() {  # <versao, com ou sem "v"> → namespace que publicou essa ver
   else
     printf '%s' "$IMG_NS"
   fi
+}
+img_ref() {  # img_ref <repo> <versão> → referência completa no registro que publicou a versão
+  printf '%s/%s:%s' "$(ns_da_versao "$2")" "$1" "${2#v}"
 }
 
 # A última versão publicada (ex.: "1.2.1"), ou vazio se não deu para saber.

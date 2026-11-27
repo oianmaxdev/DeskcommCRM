@@ -951,6 +951,13 @@ check "versão oficial vem do registro oficial (1.110.0)" test "$(NSV 1.110.0)" 
 check "  com o v na frente também (v1.126.0)" test "$(NSV v1.126.0)" = "$NS_OFICIAL"
 check "versão da distribuição vem do registro dela (1.126.1001)" test "$(NSV 1.126.1001)" = "$NS"
 check "canal móvel segue o registro do kit (stable)" test "$(NSV stable)" = "$NS"
+IREF() { bash -c ". '$KIT_DIR_TESTE/_common.sh' >/dev/null 2>&1; img_ref '$1' '$2'"; }
+check "img_ref: a volta para a oficial monta a referência oficial" \
+  test "$(IREF deskcommcrm v1.110.0)" = "$NS_OFICIAL/deskcommcrm:1.110.0"
+check "img_ref: a versão da distribuição monta a do fork" \
+  test "$(IREF deskcomm-worker v1.126.1002)" = "$NS/deskcomm-worker:1.126.1002"
+check "nenhum ponto do kit monta referência de versão com IMG_APP/WORKER/SCHEDULER/VOZ" \
+  bash -c "! grep -nE '\\\$\\{IMG_(APP|WORKER|SCHEDULER|VOICE_AGENT)\\}:\\\$' '$KIT_DIR_TESTE'/update.sh '$KIT_DIR_TESTE'/install.sh '$KIT_DIR_TESTE'/_common.sh"
 check "o pré-voo de uma versão oficial confere o registro oficial" \
   bash -c ". '$KIT_DIR_TESTE/_common.sh' >/dev/null 2>&1; . '$KIT_DIR_TESTE/_manifestos.sh' >/dev/null 2>&1; ghcr_status() { printf '%s' \"\$IMG_NS\" > '$TMP_NSV'; printf 200; }; manifesto_tem_plataforma() { return 0; }; preflight_imagens_crm 1.110.0 linux/amd64 && grep -qx '$NS_OFICIAL' '$TMP_NSV'"
 

@@ -298,13 +298,42 @@ export function decideAcoes(
       const regra = config.etapas[destino.id];
       const paraFrente = atual ? destino.position > atual.position : true;
       const sensivel = destino.requires_human || !paraFrente || !regra || !regra.automatico;
+      // MARCOS das etapas PULADAS: só as que ficam estritamente entre a etapa atual
+      // e o destino, com o critério comprovado por citação literal. Viajam DENTRO do
+      // movimento: se ele espera o gestor, os marcos esperam junto; se é recusado,
+      // nenhum marco existe. Nunca etapa de fechamento, nunca movimento para trás.
+      const marcos: Array<{ stage_id: string; stage_name: string; message_id: string; occurred_at: string }> = [];
+      if (paraFrente && atual) {
+        const vistos = new Set<string>();
+        for (const m of analise.marcos ?? []) {
+          const id = ctx.refsDeEtapa[m.stage_ref.trim()];
+          const etapa = id ? ctx.etapas.find((s) => s.id === id) : undefined;
+          if (!etapa || vistos.has(etapa.id)) continue;
+          if (etapa.is_archived || etapa.is_won || etapa.is_lost) continue;
+          if (!(etapa.position > atual.position && etapa.position < destino.position)) continue;
+          const evm = verificaEvidencia(janela, m.evidencia);
+          if (!evm.ok) {
+            descartes.push({ o_que: `marco:${etapa.name}`, motivo: evm.motivo });
+            continue;
+          }
+          const msg = janela.find((x) => x.id === evm.messageId);
+          if (!msg) continue;
+          vistos.add(etapa.id);
+          marcos.push({ stage_id: etapa.id, stage_name: etapa.name, message_id: evm.messageId, occurred_at: msg.enviadaEm });
+        }
+        marcos.sort((x, y) => (ctx.etapas.find((s) => s.id === x.stage_id)?.position ?? 0) - (ctx.etapas.find((s) => s.id === y.stage_id)?.position ?? 0));
+      }
       push(
         {
           kind: "move_stage",
           risk: sensivel ? "condicional" : "baixo",
           before: { stage_id: ctx.stageId, stage_name: atual?.name ?? null },
-          after: { stage_id: destino.id, stage_name: destino.name },
-          reason: e.motivo || `Movido para ${destino.name}`,
+          after: marcos.length
+            ? { stage_id: destino.id, stage_name: destino.name, marcos }
+            : { stage_id: destino.id, stage_name: destino.name },
+          reason:
+            (e.motivo || `Movido para ${destino.name}`) +
+            (marcos.length ? ` · marco${marcos.length > 1 ? "s" : ""} comprovado${marcos.length > 1 ? "s" : ""}: ${marcos.map((m) => m.stage_name).join(", ")}` : ""),
           evidence: [gravada(ev)],
           dedupKey: `stage:${L}:${ctx.stageId}>${destino.id}`,
         },
@@ -420,15 +449,28 @@ export function decideAcoes(
       descartes.push({ o_que: "tarefa", motivo: ev.motivo });
       continue;
     }
+    // Compromisso HISTÓRICO (já cumprido ou sem ação possível) não vira tarefa
+    // pendente: a lista de pendências não é o diário da conversa.
+    if (t.ainda_pendente === false) {
+      descartes.push({ o_que: "tarefa", motivo: "compromisso_historico" });
+      continue;
+    }
     // Prazo só quando alguém combinou um momento E ele é uma data válida no
     // futuro próximo. Sem isso, "sem prazo" — inventar data envenena a lista
     // de atrasadas (ver o cabeçalho de crm_tasks no baseline).
+    // Obrigação VENCIDA (o momento passou e ainda exige ação) mantém a data real —
+    // é exatamente o que a lista de atrasadas existe para mostrar — mas só até 30
+    // dias; data mais velha que isso é quase sempre leitura errada do histórico.
     let prazo: string | null = null;
+    let vencida = false;
     if (t.prazo_iso) {
       const p = new Date(t.prazo_iso);
-      const umDiaAtras = agora.getTime() - 24 * 3600 * 1000;
+      const trintaDias = agora.getTime() - 30 * 24 * 3600 * 1000;
       const umAno = agora.getTime() + 366 * 24 * 3600 * 1000;
-      if (!Number.isNaN(p.getTime()) && p.getTime() > umDiaAtras && p.getTime() < umAno) prazo = p.toISOString();
+      if (!Number.isNaN(p.getTime()) && p.getTime() > trintaDias && p.getTime() < umAno) {
+        prazo = p.toISOString();
+        vencida = p.getTime() < agora.getTime();
+      }
     }
     abertas.add(normaliza(titulo));
     criouTarefa = true;
@@ -438,7 +480,11 @@ export function decideAcoes(
         risk: "baixo",
         before: null,
         after: { title: titulo, due_date: prazo },
-        reason: prazo ? "Compromisso combinado na conversa" : "Compromisso combinado na conversa (sem data definida)",
+        reason: vencida
+          ? "Compromisso combinado na conversa e já vencido"
+          : prazo
+            ? "Compromisso combinado na conversa"
+            : "Compromisso combinado na conversa (sem data definida)",
         evidence: [gravada(ev)],
         dedupKey: `task:${L}:${hash(normaliza(titulo))}`,
       },

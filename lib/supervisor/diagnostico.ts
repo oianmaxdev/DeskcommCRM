@@ -372,8 +372,10 @@ export async function geraDiagnostico(
   const { data: runs, error: runsErr } = await rq;
   if (runsErr) throw new Error(`supervisor_runs: ${runsErr.message}`);
   const leituras = (runs ?? []) as Array<LeituraDoPeriodo & LeituraParaAgregar>;
-  const agregado = agregaLeituras(leituras);
-  const porVendedor = escopo.owner_user_id ? [] : agregaPorVendedor(leituras);
+  // Só os critérios que este diagnóstico avalia — id fora da lista é descartado.
+  const criteriosValidos = new Set(criteriosEmVigor(config).criterios.map((c) => c.id));
+  const agregado = agregaLeituras(leituras, criteriosValidos);
+  const porVendedor = escopo.owner_user_id ? [] : agregaPorVendedor(leituras, criteriosValidos);
 
   const { data: orgRow } = await admin.from("organizations").select("display_name, timezone, onboarding_state").eq("id", orgId).maybeSingle();
   const org = orgRow as { display_name: string | null; timezone: string | null; onboarding_state: unknown } | null;

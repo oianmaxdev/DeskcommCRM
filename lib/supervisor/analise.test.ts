@@ -41,6 +41,7 @@ describe("analiseSchema", () => {
       informacao_suficiente: true,
       negocio: { lead_ref: null, confianca: "alta", motivo: "" },
       etapa: null,
+      marcos: [],
       desfecho: { tipo: "venda_quase_certa", motivo_da_perda: null, evidencia: null },
       qualificacao: { budget: null, authority: null, need: null, timeline: null },
       compromissos: [],

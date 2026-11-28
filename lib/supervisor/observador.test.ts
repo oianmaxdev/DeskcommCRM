@@ -108,6 +108,7 @@ function leitura(p: Partial<Analise> = {}): Analise {
     informacao_suficiente: true,
     negocio: { lead_ref: null, confianca: "baixa", motivo: "conversa não cita o negócio" },
     etapa: { stage_ref: "e3", confianca: "alta", motivo: "Proposta com valor enviada", evidencia: { mensagem: "m4", trecho: "Segue a proposta" } },
+    marcos: [],
     desfecho: { tipo: "venda_comprovada", motivo_da_perda: null, evidencia: { mensagem: "m5", trecho: "marque como ganho" } },
     qualificacao: {
       budget: { valor: "R$ 5 mil", evidencia: { mensagem: "m3", trecho: "Uns 5 mil reais" } },
@@ -121,7 +122,7 @@ function leitura(p: Partial<Analise> = {}): Analise {
     campos: [{ key: "produto", valor: "Site para clínica", evidencia: { mensagem: "m1", trecho: "preciso de um site" } }],
     valor_do_negocio_centavos: null,
     tags: [],
-    tarefas: [{ titulo: "Ligar para fechar o site", prazo_iso: "2026-11-14T13:00:00Z", evidencia: { mensagem: "m5", trecho: "Me liga amanhã às 10h" } }],
+    tarefas: [{ titulo: "Ligar para fechar o site", prazo_iso: "2026-11-14T13:00:00Z", ainda_pendente: true, evidencia: { mensagem: "m5", trecho: "Me liga amanhã às 10h" } }],
     precisa_follow_up: { necessario: false, motivo: "" },
     aderencia: [{ criterio: "investigou_necessidade", resultado: "sim", evidencia: null }],
     problemas: [],

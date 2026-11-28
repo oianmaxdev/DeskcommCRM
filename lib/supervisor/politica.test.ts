@@ -30,6 +30,7 @@ function analise(p: Partial<Analise> = {}): Analise {
     informacao_suficiente: true,
     negocio: { lead_ref: null, confianca: "alta", motivo: "" },
     etapa: null,
+    marcos: [],
     desfecho: { tipo: "nenhum", motivo_da_perda: null, evidencia: null },
     qualificacao: { budget: null, authority: null, need: null, timeline: null },
     compromissos: [],
@@ -382,8 +383,8 @@ describe("tarefas e follow-up", () => {
     const { acoes } = decideAcoes(
       analise({
         tarefas: [
-          { titulo: "Ligar para fechar", prazo_iso: "2026-11-14T13:00:00Z", evidencia: cita("m5", "me liga amanhã às 10h") },
-          { titulo: "Enviar contrato", prazo_iso: "data qualquer", evidencia: cita("m5", "para fechar") },
+          { titulo: "Ligar para fechar", prazo_iso: "2026-11-14T13:00:00Z", ainda_pendente: true, evidencia: cita("m5", "me liga amanhã às 10h") },
+          { titulo: "Enviar contrato", prazo_iso: "data qualquer", ainda_pendente: true, evidencia: cita("m5", "para fechar") },
         ],
       }),
       janela,
@@ -399,7 +400,7 @@ describe("tarefas e follow-up", () => {
 
   it("não duplica tarefa que já está aberta", () => {
     const r = decideAcoes(
-      analise({ tarefas: [{ titulo: "Ligar para fechar", prazo_iso: null, evidencia: cita("m5", "me liga amanhã") }] }),
+      analise({ tarefas: [{ titulo: "Ligar para fechar", prazo_iso: null, ainda_pendente: true, evidencia: cita("m5", "me liga amanhã") }] }),
       janela,
       ctx({ tarefasAbertas: ["ligar para FECHAR"] }),
       config(),

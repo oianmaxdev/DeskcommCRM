@@ -27,7 +27,16 @@ REGRAS INEGOCIÁVEIS
    negociação não mudou de etapa, devolva null.
 6. Prazo de tarefa só quando alguém combinou um momento ("amanhã às 10h", "sexta"). O horário combinado
    está no FUSO DA EMPRESA informado abaixo: devolva prazo_iso em ISO-8601 COM o offset desse fuso
-   (ex.: 2026-03-10T10:00:00-03:00). Sem momento combinado, prazo_iso = null.
+   (ex.: 2026-03-10T10:00:00-03:00). Sem momento combinado, prazo_iso = null. Nunca invente horário: se só o DIA
+   foi combinado ("sexta"), devolva esse dia às 23:59 no fuso da empresa (prazo até o fim do dia).
+   Calcule datas relativas ("amanhã", "sábado") a partir da DATA DA MENSAGEM em que foram ditas, não de hoje.
+   "ainda_pendente": compare com a data de referência. Compromisso cujo momento já passou e que a conversa
+   mostra cumprido (ou que não exige mais ação) é HISTÓRICO: ainda_pendente = false. Só é true o que, agora,
+   ainda precisa ser feito — inclusive uma obrigação vencida que ninguém cumpriu.
+6b. "marcos": liste as etapas (pelo ref) cujo critério de entrada a conversa COMPROVA, com citação literal —
+   inclusive etapas intermediárias que o negócio pularia (ex.: a cliente disse produto, tamanho e ocasião e já
+   combinou a visita: marque a etapa de qualificação E a de negociação). Não liste etapa de fechamento nem
+   etapa cujo critério não foi mostrado de fato. Na dúvida, não liste.
 7. Se a janela não tem fato comercial (só cumprimento, figurinha, assunto alheio), informacao_suficiente = false.
 8. "compromissos" são os sinais de avanço dados pelo CLIENTE: o que ele disse que vai fazer ou pediu como
    próximo passo de compra ("me liga amanhã que a gente fecha", "vou mandar os documentos", "pode enviar o

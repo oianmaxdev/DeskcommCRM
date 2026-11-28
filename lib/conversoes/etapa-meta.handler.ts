@@ -25,6 +25,8 @@ import { lerRegistro } from "./registro-de-envio";
 import { ehEventoDeEtapaMeta, lerRegraMetaDaEtapa } from "./regras-meta";
 
 const KEY = "conversoes.etapa_meta";
+/** Emitido pelo Supervisor Comercial (lib/supervisor/executor.ts, EVENTO_MARCO_COMERCIAL). */
+const EVENTO_MARCO = "lead.milestone_reached";
 const ignorar = (detail: string): HandlerResult => ({
   consumer_key: KEY,
   status: "skipped",
@@ -55,10 +57,21 @@ async function handle(row: EventRow): Promise<HandlerResult> {
       return await enviar(row, evento, registro.event_occurred_at, registro.meta_event_name);
     }
 
-    if (row.event_type !== "lead.stage_changed") return ignorar("outro_evento");
-    const etapaId = z.uuid().safeParse(row.payload.to_stage_id);
+    if (row.event_type !== "lead.stage_changed" && row.event_type !== EVENTO_MARCO) return ignorar("outro_evento");
+    const marco = row.event_type === EVENTO_MARCO;
+    const etapaId = z.uuid().safeParse(marco ? row.payload.stage_id : row.payload.to_stage_id);
     if (!etapaId.success || !row.created_at || !Number.isFinite(Date.parse(row.created_at)))
       return ignorar("sem_etapa_ou_data");
+    // Marco comercial (etapa pulada com critério comprovado pelo Supervisor): o
+    // horário que vai à Meta é o da MENSAGEM que comprovou o marco, não o do
+    // reconhecimento. Nunca no futuro do evento; sem horário válido, não há marco.
+    let ocorridoEm = row.created_at;
+    if (marco) {
+      const quando = typeof row.payload.occurred_at === "string" ? Date.parse(row.payload.occurred_at) : NaN;
+      if (!Number.isFinite(quando) || quando > Date.parse(row.created_at) + 60_000)
+        return ignorar("marco_sem_horario");
+      ocorridoEm = new Date(quando).toISOString();
+    }
 
     const regra = await lerRegraMetaDaEtapa(admin, row.organization_id, etapaId.data);
     if (!regra || !regra.enabled) return ignorar("etapa_sem_regra_meta");
@@ -88,7 +101,7 @@ async function handle(row: EventRow): Promise<HandlerResult> {
     if (erroEtapa) throw erroEtapa;
     if (!etapa) return ignorar("etapa_invalida");
 
-    return await enviar(row, regra.eventName, row.created_at, regra.metaEvent);
+    return await enviar(row, regra.eventName, ocorridoEm, regra.metaEvent);
   } catch {
     return {
       consumer_key: KEY,
@@ -102,6 +115,6 @@ async function handle(row: EventRow): Promise<HandlerResult> {
 export const conversaoDeEtapaMetaHandler: EventHandler = {
   key: KEY,
   naOrgParada: "pula",
-  events: ["lead.stage_changed", "ad_conversion.retry_requested"],
+  events: ["lead.stage_changed", EVENTO_MARCO, "ad_conversion.retry_requested"],
   handle,
 };

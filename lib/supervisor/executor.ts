@@ -34,6 +34,27 @@ import { logger } from "@/lib/logger";
 
 import type { EvidenciaGravada, TipoDeAcao } from "./politica";
 
+/** Evento de marco comercial atingido (etapa pulada com critério comprovado). */
+export const EVENTO_MARCO_COMERCIAL = "lead.milestone_reached";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Os marcos gravados no `after` do movimento, validados de novo (é jsonb do banco). */
+export function marcosDaAcao(acao: { after: Record<string, unknown> }): Array<{ stage_id: string; occurred_at: string; message_id: string }> {
+  const bruto = acao.after?.marcos;
+  if (!Array.isArray(bruto)) return [];
+  const out: Array<{ stage_id: string; occurred_at: string; message_id: string }> = [];
+  for (const m of bruto.slice(0, 6)) {
+    if (!m || typeof m !== "object") continue;
+    const r = m as Record<string, unknown>;
+    if (typeof r.stage_id !== "string" || !UUID.test(r.stage_id)) continue;
+    if (typeof r.occurred_at !== "string" || !Number.isFinite(Date.parse(r.occurred_at))) continue;
+    out.push({ stage_id: r.stage_id, occurred_at: r.occurred_at, message_id: typeof r.message_id === "string" ? r.message_id : "" });
+  }
+  return out;
+}
+
+
 export const ATOR_SUPERVISOR_ID = "supervisor-comercial";
 
 export interface AcaoGravada {
@@ -271,6 +292,21 @@ export async function executaAcao(
           p_organization_id: org,
         } as never);
         if (evErr) logger.error("[supervisor] emit_event lead.stage_changed falhou", { lead_id: leadId, error: evErr.message });
+        // MARCOS das etapas puladas (ver `decideAcoes`): um evento por etapa cujo
+        // critério a conversa comprovou. Não move o negócio e não finge movimento:
+        // quem decide se vira conversão é o consumidor da regra da etapa (Meta), com
+        // o mesmo livro-razão, dedupe e guarda de retroatividade de sempre.
+        for (const m of marcosDaAcao(acao)) {
+          const { error: mErr } = await admin.rpc("emit_event" as never, {
+            p_event_type: EVENTO_MARCO_COMERCIAL,
+            p_entity_kind: "crm_lead",
+            p_entity_id: leadId,
+            p_payload: { pipeline_id: L.pipeline_id, stage_id: m.stage_id, occurred_at: m.occurred_at, message_id: m.message_id, origem: "supervisor" },
+            p_metadata: metadataDoEvento(quem),
+            p_organization_id: org,
+          } as never);
+          if (mErr) logger.error("[supervisor] emit_event marco comercial falhou", { lead_id: leadId, error: mErr.message });
+        }
         return { status: "applied" };
       }
 

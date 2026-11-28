@@ -38,7 +38,13 @@ export interface Agregado {
 
 const pct = (a: number, b: number): number | null => (b === 0 ? null : Math.round((a / b) * 1000) / 10);
 
-export function agregaLeituras(leituras: readonly LeituraParaAgregar[]): Agregado {
+/**
+ * `criteriosValidos`: os ids dos critérios EM VIGOR no diagnóstico (`criteriosEmVigor`).
+ * Id que o modelo inventou ou escreveu errado (ex.: `ocasio_tamanho` no lugar de
+ * `ocasiao_tamanho`, visto na demo de 28/11/2026) não vira linha do relatório nem
+ * mexe nos indicadores. Sem o conjunto, nada é filtrado (compatibilidade).
+ */
+export function agregaLeituras(leituras: readonly LeituraParaAgregar[], criteriosValidos?: ReadonlySet<string>): Agregado {
   const conversas = new Set(leituras.map((l) => l.conversation_id));
   const total = conversas.size;
 
@@ -63,6 +69,7 @@ export function agregaLeituras(leituras: readonly LeituraParaAgregar[]): Agregad
     }
     for (const c of a.aderencia ?? []) {
       if (c.resultado === "nao_aplicavel") continue;
+      if (criteriosValidos && !criteriosValidos.has(c.criterio)) continue;
       const e = porCriterio.get(c.criterio) ?? { avaliadas: new Set(), cumpridas: new Set() };
       e.avaliadas.add(l.conversation_id);
       if (c.resultado === "sim") e.cumpridas.add(l.conversation_id);
@@ -115,7 +122,7 @@ export function agregaLeituras(leituras: readonly LeituraParaAgregar[]): Agregad
 }
 
 /** O mesmo agregado, por vendedor — para o gestor ver quem precisa de quê. */
-export function agregaPorVendedor(leituras: readonly LeituraParaAgregar[]): Array<{ owner_user_id: string; agregado: Agregado }> {
+export function agregaPorVendedor(leituras: readonly LeituraParaAgregar[], criteriosValidos?: ReadonlySet<string>): Array<{ owner_user_id: string; agregado: Agregado }> {
   const grupos = new Map<string, LeituraParaAgregar[]>();
   for (const l of leituras) {
     if (!l.owner_user_id) continue;
@@ -123,7 +130,7 @@ export function agregaPorVendedor(leituras: readonly LeituraParaAgregar[]): Arra
     g.push(l);
     grupos.set(l.owner_user_id, g);
   }
-  return [...grupos.entries()].map(([owner_user_id, g]) => ({ owner_user_id, agregado: agregaLeituras(g) }));
+  return [...grupos.entries()].map(([owner_user_id, g]) => ({ owner_user_id, agregado: agregaLeituras(g, criteriosValidos) }));
 }
 
 /** Rótulos legíveis — a tela e o prompt do diagnóstico usam os mesmos. */

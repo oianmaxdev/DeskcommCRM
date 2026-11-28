@@ -107,6 +107,18 @@ export const analiseSchema = z.object({
       evidencia: citacao,
     })
     .nullable(),
+  // Marcos comerciais: etapas cujo CRITÉRIO a conversa comprovou, mesmo que o negócio
+  // vá direto para uma etapa posterior (Novo Lead → Negociação passando pela
+  // qualificação). Cada marco precisa de citação literal; a política decide o resto.
+  marcos: z
+    .array(
+      z.object({
+        stage_ref: z.string().describe("ref da etapa (e1, e2...) cujo critério de entrada a conversa comprovou"),
+        evidencia: citacao,
+      }),
+    )
+    .max(6)
+    .describe("etapas com critério comprovado na conversa (inclusive as que o negócio pularia); lista vazia se nenhuma"),
   desfecho: z.object({
     tipo: z.enum(TIPOS_DE_DESFECHO),
     motivo_da_perda: z.string().nullable().describe("um dos motivos de perda listados, ou null"),
@@ -138,6 +150,9 @@ export const analiseSchema = z.object({
           .string()
           .nullable()
           .describe("data/hora ISO-8601 SÓ se alguém combinou um momento; senão null"),
+        ainda_pendente: z
+          .boolean()
+          .describe("true se, AGORA, o compromisso ainda exige ação de alguém; false se já aconteceu ou perdeu o sentido"),
         evidencia: citacao,
       }),
     )
@@ -163,10 +178,11 @@ export const analiseSchema = z.object({
           .max(140)
           .describe("a situação concreta, em uma frase curta: ex. 'informou o preço e não conduziu para o próximo passo'"),
         descricao: z.string().max(400).describe("o que aconteceu nesta conversa, com os fatos (horários, o que foi dito)"),
+        // Anulável, NUNCA opcional: o modo estrito de saída estruturada da OpenAI exige toda
+        // chave em `required` — `.optional()` derrubava 100% das leituras pela assinatura.
         prazo_iso: z
           .string()
           .nullable()
-          .optional()
           .describe("só em compromisso_nao_cumprido/sem_follow_up: quando o passo combinado era devido (ISO-8601 com o offset do fuso); null se nenhum momento foi combinado"),
       }),
     )

@@ -594,6 +594,80 @@ describe("o evento de ETAPA da Meta também sai pelo canal", () => {
 // #2457: o texto da pendência lista o que o ENVIO aceita, pelo nome da tela.
 // Escrito à mão, ele já ofereceu `Purchase` — que não é opção de etapa — e os
 // nomes da Meta em inglês, que a tela não mostra.
+// Marco comercial: o Supervisor pulou a etapa (Novo Lead → Negociação) mas a conversa
+// comprovou o critério dela. Mesmo consumidor, mesma regra, mesmo livro-razão; o
+// horário que vai à Meta é o da MENSAGEM que comprovou o marco.
+const MARCO_EM = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+const marcoAtingido: EventRow = {
+  ...evento,
+  event_type: "lead.milestone_reached",
+  payload: { stage_id: ETAPA, occurred_at: MARCO_EM, origem: "supervisor" },
+  created_at: ENTROU_NA_ETAPA,
+};
+
+describe("marco comercial de etapa pulada", () => {
+  beforeEach(() => {
+    gravados.length = 0;
+    tabelasLidas.length = 0;
+  });
+
+  it("sai com o evento da regra da etapa e o horário da mensagem que comprovou o marco", async () => {
+    vi.mocked(createAdminClient).mockReturnValue(
+      fakeAdmin({ sessao: CANAL_COM_PONTE, extras: regraDaEtapa("QualifiedLead") }) as never,
+    );
+    const f = vi.spyOn(globalThis, "fetch").mockResolvedValue(resposta({ eventsReceived: 1, eventsFailed: 0 }));
+
+    const r = await conversaoDeEtapaMetaHandler.handle(marcoAtingido);
+
+    expect(r.status).toBe("ok");
+    expect(JSON.parse(f.mock.calls[0]![1]?.body as string)).toMatchObject({
+      eventName: "QualifiedLead",
+      eventId: `${LEAD}:${CHAVE_DA_ETAPA}`,
+      eventTime: Math.floor(Date.parse(MARCO_EM) / 1000),
+    });
+    expect(gravados.at(-1)).toMatchObject({ status: "sent", event_name: CHAVE_DA_ETAPA });
+  });
+
+  it("já enviado pela etapa (ou por marco anterior): não sai de novo", async () => {
+    vi.mocked(createAdminClient).mockReturnValue(
+      fakeAdmin({
+        sessao: CANAL_COM_PONTE,
+        extras: { ...regraDaEtapa("QualifiedLead"), ad_conversion_dispatches: { status: "sent", platform: "meta_ads" } },
+      }) as never,
+    );
+    const f = vi.spyOn(globalThis, "fetch");
+    const r = await conversaoDeEtapaMetaHandler.handle(marcoAtingido);
+    expect(r).toMatchObject({ status: "skipped", detail: "ja_enviada" });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it("sem horário válido, ou com horário no futuro do evento, não há marco", async () => {
+    vi.mocked(createAdminClient).mockReturnValue(
+      fakeAdmin({ sessao: CANAL_COM_PONTE, extras: regraDaEtapa("QualifiedLead") }) as never,
+    );
+    const f = vi.spyOn(globalThis, "fetch");
+    for (const occurred_at of [undefined, "ontem", new Date(Date.now() + 86_400_000).toISOString()]) {
+      const r = await conversaoDeEtapaMetaHandler.handle({ ...marcoAtingido, payload: { stage_id: ETAPA, occurred_at } });
+      expect(r).toMatchObject({ status: "skipped", detail: "marco_sem_horario" });
+    }
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it("reconhecido antes de a regra existir: nada retroativo", async () => {
+    vi.mocked(createAdminClient).mockReturnValue(
+      fakeAdmin({ sessao: CANAL_COM_PONTE, extras: regraDaEtapa("QualifiedLead") }) as never,
+    );
+    const f = vi.spyOn(globalThis, "fetch");
+    const r = await conversaoDeEtapaMetaHandler.handle({
+      ...marcoAtingido,
+      created_at: "2026-09-01T00:00:00Z",
+      payload: { stage_id: ETAPA, occurred_at: "2026-08-31T23:00:00Z" },
+    });
+    expect(r).toMatchObject({ status: "skipped", detail: "anterior_a_configuracao" });
+    expect(f).not.toHaveBeenCalled();
+  });
+});
+
 describe("o texto de `evento_fora_do_canal` sai da mesma lista que o envio usa", () => {
   it("nomeia cada evento que o canal repassa pelo rótulo da tela, e não oferece a compra", () => {
     const texto = MOTIVO_LEGIVEL.evento_fora_do_canal;

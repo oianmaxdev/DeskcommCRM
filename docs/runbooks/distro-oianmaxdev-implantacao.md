@@ -1,6 +1,6 @@
 # Runbook — implantar a distribuição oianmaxdev na VPS (Hostinger)
 
-> **Status:** preparado e **ensaiado numa VPS simulada** (relatório `docs/audits/2026-11-26-distribuicao-oianmaxdev.md` §E.2); **não executado em produção**.
+> **Status:** **executado em produção** em 27/11/2026 (`v1.126.1002`, promovida a estável em 28/11). Registro no relatório `docs/audits/2026-11-26-distribuicao-oianmaxdev.md` §E.5. As próximas atualizações saem pela tela Configurações › Atualização.
 > A implantação depende de autorização explícita do dono, e da conclusão dos pré-requisitos da §0.
 > Os dados da VPS da §1 foram lidos pelo MCP da Hostinger (só leitura) em 2026-11-26, inclusive o
 > compose e o `.env` do projeto. Os segredos do `.env` **não** são reproduzidos aqui. O que só o SSH

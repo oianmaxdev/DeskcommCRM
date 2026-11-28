@@ -157,6 +157,31 @@ Para gastar menos: **juntar correções em poucos PRs** (cada PR paga duas rodad
 workflow à mão sem motivo. Cortar a rodada do push na `main` exigiria mexer em vários workflows do
 upstream e abriria conflito em toda integração — não compensa.
 
+## E.5 Implantação em produção (27–28/11/2026)
+
+Autorizada pelo dono. Executada pelo runbook, por SSH e pelo MCP da Hostinger. **Sem atualizar o
+sistema operacional nem reiniciar a VPS.**
+
+| Etapa | Resultado |
+|---|---|
+| Inventário (§2.1) | 1.110.0, árvore limpa, `buildx` 0.33, 28 GB livres; digests guardados em `/root/inventario-imagens-2026-11-27.txt` |
+| Snapshot da VM | criado às 21h53 UTC de 27/11 (restauração ~30 min). **Expira em 28/11 às 21h53 UTC** |
+| Backup (§2.3) | `backup.sh` (banco 1,7 MB, sessões do WhatsApp 1,4 MB) + configuração com `umask 077`; copiados para fora da VPS e conferidos (`gzip -t`) |
+| Restauração testada (§2.4) | o dump REAL restaurado no Supabase isolado da simulação: 226 tabelas / 11.846 linhas conferidas, contagens idênticas às da produção; dados apagados da simulação em seguida |
+| Transição (§3) | kit da distribuição em cópia externa, `update.sh --to v1.126.1002`, destacado da sessão (`setsid nohup`); **concluída às 22h22 UTC**: backup, baseline sem erro, 212 regras de isolamento, troca das imagens, "app no ar e saudável" |
+| Depois de ~5 h | app, worker, scheduler e Redis saudáveis com `oianmaxdev:1.126.1002`; zero erro em app/worker/scheduler; nenhuma volta automática; crontab aponta para o kit do clone |
+| Dados | 5 organizações, 28 contatos, 28 conversas, 809 mensagens, 28 negócios — **iguais a antes** |
+| Supervisor | 4 tabelas criadas; `supervisor_settings` vazio — **desligado em todas as organizações** |
+| WhatsApp | a sessão que estava `WORKING` voltou sozinha; a outra já estava `FAILED` antes da implantação (sem pareamento) |
+| Integrações | n8n, Evolution e Traefik intocados (de pé há 5 semanas); fila de eventos sem pendência nova |
+| Promoção | `distro-promover v1.126.1002` → **Latest**; a tela de Atualização passou a ver a instalação em dia |
+
+**Não verificado por mim:** a interface autenticada da produção — não entrei com a senha do dono — e
+o envio/recebimento de uma mensagem de teste num número próprio. As duas ficam com o dono.
+
+**Estado preexistente, não causado pela implantação:** 163 eventos `dead` no `event_log`, todos
+anteriores a 27/11 22h; uma sessão do WhatsApp sem pareamento.
+
 ## F. Para a sua operação
 
 1. **Novas versões oficiais:** a cada 6 horas o GitHub confere se saiu release estável nova do Deskcomm. Se saiu, ele mistura a versão nova com as suas funcionalidades numa branch separada e abre um PR com os testes rodando. Nada chega à sua VPS sozinho.
